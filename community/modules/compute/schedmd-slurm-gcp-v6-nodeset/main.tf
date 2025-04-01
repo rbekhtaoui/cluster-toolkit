@@ -110,7 +110,7 @@ locals {
     instance_properties_json = jsonencode(var.instance_properties)
 
     zone_target_shape = var.zone_target_shape
-    zone_policy_allow = local.zones
+    zone_policy_allow = var.zones
     zone_policy_deny  = local.zones_deny
 
     startup_script  = local.ghpc_startup_script
@@ -122,8 +122,7 @@ locals {
 }
 
 locals {
-  zones      = setunion(var.zones, [var.zone])
-  zones_deny = setsubtract(data.google_compute_zones.available.names, local.zones)
+  zones_deny = setsubtract(data.google_compute_zones.available.names, var.zones)
 }
 
 data "google_compute_zones" "available" {
@@ -132,9 +131,9 @@ data "google_compute_zones" "available" {
 
   lifecycle {
     postcondition {
-      condition     = length(setsubtract(local.zones, self.names)) == 0
+      condition     = length(setsubtract(var.zones, self.names)) == 0
       error_message = <<-EOD
-      Invalid zones=${jsonencode(setsubtract(local.zones, self.names))}
+      Invalid zones=${jsonencode(setsubtract(var.zones, self.names))}
       Available zones=${jsonencode(self.names)}
       EOD
     }
@@ -193,7 +192,7 @@ data "google_compute_reservation" "reservation" {
 }
 
 data "google_compute_machine_types" "machine_types_by_zone" {
-  for_each = local.zones
+  for_each = var.zones
   project  = var.project_id
   filter   = format("name = \"%s\"", var.machine_type)
   zone     = each.value
@@ -210,7 +209,7 @@ resource "terraform_data" "machine_type_zone_validation" {
     precondition {
       condition     = length(local.zones_with_machine_type) > 0
       error_message = <<-EOT
-        machine type ${var.machine_type} is not available in any of the zones ${jsonencode(local.zones)}". To list zones in which it is available, run:
+        machine type ${var.machine_type} is not available in any of the zones ${jsonencode(var.zones)}". To list zones in which it is available, run:
 
         gcloud compute machine-types list --filter="name=${var.machine_type}"
         EOT
