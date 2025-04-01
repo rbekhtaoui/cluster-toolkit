@@ -92,13 +92,13 @@ locals {
 
     on_host_maintenance      = var.on_host_maintenance
     preemptible              = var.preemptible
-    region                   = var.region
+    regions                   = var.regions
     service_account          = local.service_account
     shielded_instance_config = var.shielded_instance_config
     source_image_family      = local.source_image_family             # requires source_image_logic.tf
     source_image_project     = local.source_image_project_normalized # requires source_image_logic.tf
     source_image             = local.source_image                    # requires source_image_logic.tf
-    subnetwork_self_link     = var.subnetwork_self_link
+    subnetworks_self_link     = var.subnetworks_self_link
     additional_networks      = var.additional_networks
     access_config            = local.access_config
     tags                     = var.tags
