@@ -398,7 +398,7 @@ variable "regions" {
 variable "zone" {
   description = "Zone in which to create compute VMs. Additional zones in the same region can be specified in var.zones."
   type        = string
-  default = []
+  default = ""
 }
 
 variable "zones" {
