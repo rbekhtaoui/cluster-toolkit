@@ -389,15 +389,16 @@ variable "enable_placement" {
   default     = true
 }
 
-variable "region" {
+variable "regions" {
   description = "The default region for Cloud resources."
-  type        = string
+  type        = list(string)
 }
 
 
 variable "zone" {
   description = "Zone in which to create compute VMs. Additional zones in the same region can be specified in var.zones."
   type        = string
+  default = ""
 }
 
 variable "zones" {
@@ -433,8 +434,8 @@ EOD
   }
 }
 
-variable "subnetwork_self_link" {
-  type        = string
+variable "subnetworks_self_link" {
+  type        = list(string)
   description = "Subnet to deploy to."
 }
 
