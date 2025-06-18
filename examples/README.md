@@ -39,8 +39,9 @@ md_toc github examples/README.md | sed -e "s/\s-\s/ * /"
   * [client-google-cloud-storage.yaml](#client-google-cloud-storageyaml--) ![community-badge] ![experimental-badge]
   * [hpc-slurm-gromacs.yaml](#hpc-slurm-gromacsyaml--) ![community-badge] ![experimental-badge]
   * [hpc-slurm-local-ssd.yaml](#hpc-slurm-local-ssdyaml--) ![community-badge] ![experimental-badge]
-  * [hpc-slurm-h4d.yaml](#hpc-slurm-h4dyaml--) ![community-badge] ![experimental-badge]
+  * [hpc-slurm-h4d.yaml](#hpc-slurm-h4dyaml--) ![core-badge]
   * [hcls-blueprint.yaml](#hcls-blueprintyaml-) ![core-badge]
+  * [af3-slurm.yaml](#af3-slurmyaml--) ![core-badge] ![experimental-badge]
   * [hpc-gke.yaml](#hpc-gkeyaml-) ![core-badge]
   * [ml-gke](#ml-gkeyaml-) ![core-badge]
   * [storage-gke](#storage-gkeyaml-) ![core-badge]
@@ -263,9 +264,10 @@ File systems:
   [DDN Exascaler Lustre](../community/modules/file-system/DDN-EXAScaler/README.md)
   file system designed for high IO performance. The capacity is ~10TiB.
 
-> **Warning**: The DDN Exascaler Lustre file system has a license cost as
-> described in the pricing section of the
-> [DDN EXAScaler Cloud Marketplace Solution](https://console.developers.google.com/marketplace/product/ddnstorage/).
+> [!WARNING]
+> This module is deprecated and will be removed on July 1, 2025. The
+> recommended replacement is the
+> [GCP Managed Lustre module](../../../../modules/file-system/managed-lustre/README.md)
 
 #### Quota Requirements for hpc-enterprise-slurm.yaml
 
@@ -684,6 +686,12 @@ For this example, the following is needed in the selected region:
 
 Creates a Slurm cluster with [Parallelstore] instance mounted.
 
+To provision the cluster, please run:
+
+```text
+./gcluster deploy examples/ps-slurm.yaml --vars "project_id=${GOOGLE_CLOUD_PROJECT}"
+```
+
 After cluster is deployed, parallelstore drivers and DAOS client will be installed
 and mount-point will be configured on the VMs. You can SSH to login/ controller
 and verify by running:
@@ -715,6 +723,12 @@ For this example the following is needed in the selected region:
 
 This creates 1 compute VM running debian 12 and 1 compute VM running ubuntu 20.04
 and connect with [Parallelstore] instance mounted.
+
+To provision the cluster, please run:
+
+```text
+./gcluster deploy examples/pfs-parallelstore.yaml --vars "project_id=${GOOGLE_CLOUD_PROJECT}"
+```
 
 After cluster is deployed, parallelstore drivers and DAOS client will be installed
 and mount-point will be configured on the VMs. You can SSH to compute VM
@@ -968,12 +982,12 @@ that have local ssd drives deployed.
 
 [hpc-slurm-local-ssd.yaml]: ../community/examples/hpc-slurm-local-ssd.yaml
 
-### [hpc-slurm-h4d.yaml] ![community-badge] ![experimental-badge]
+### [hpc-slurm-h4d.yaml] ![core-badge]
 
 Creates a basic auto-scaling Slurm cluster with mostly default settings. The
 blueprint also creates two new VPC networks, one configured for RDMA networking and the other for non-RDMA networking, along with two filestore instances mounted to `/home` and `/apps`. There is an `h4d` partition that uses compute-optimized `h4d-highmem-192-lssd` machine type.
 
-[hpc-slurm-h4d.yaml]: ../community/examples/hpc-slurm-h4d.yaml
+[hpc-slurm-h4d.yaml]: ../examples/hpc-slurm-h4d.yaml
 
 ### [hcls-blueprint.yaml]: ![core-badge]
 
@@ -984,6 +998,31 @@ GROMACS with GPUs and CPUs on Google Cloud. For full documentation, refer
 [document]: ../docs/videos/healthcare-and-life-sciences/README.md
 [hcls-blueprint.yaml]:  ../example/hcls-blueprint.yaml
 
+### [af3-slurm.yaml]: ![core-badge] ![experimental-badge]
+
+This blueprint lets you create a high-throughput execution environment for Google Deepmind's
+[AlphaFold 3](https://blog.google/technology/ai/google-deepmind-isomorphic-alphafold-3-ai-model)
+in your own GCP project. It uses the unmodified [AlphaFold 3 package](https://github.com/google-deepmind/alphafold3),
+and provides a best-practices mapping of it to Google Cloud, leveraging Google Cloud's HPC technology.
+
+We provide two simple examples that serve as basic templates for different ways of interacting with the
+AlphaFold 3 solution:
+
+* A Simple Job Launcher bash script that takes an AlphaFold 3 json file input (for the Datapipeline
+step or the Inference step) and submits it for processing to the AlphaFold 3 autoscaling Slurm cluster.
+* A Simple Service Launcher that has a central Python script that runs a loop monitoring directories on a
+provided GCS bucket for input files and which can be started as a system daemon on the
+controller-node, not requiring any user interaction with the AlphaFold 3 environment.
+
+Before using this solution, please review the [AlphaFold 3 Model Parameter Terms of Use](https://github.com/google-deepmind/alphafold3/blob/main/WEIGHTS_TERMS_OF_USE.md).
+Please check that you/your organization are eligible for obtaining the weights and that your use falls within the allowed terms and complies
+with the [Prohibited Use Policy](https://github.com/google-deepmind/alphafold3/blob/main/WEIGHTS_PROHIBITED_USE_POLICY.md).
+
+See the [AF3 Solution README] for more details.
+
+[AF3 Solution README]: ../examples/science/af3-slurm/README.md
+[af3-slurm.yaml]: ../examples/science/af3-slurm/af3-slurm.yaml
+
 ### [hpc-gke.yaml] ![core-badge]
 
 This blueprint uses GKE to provision a Kubernetes cluster with a system node
@@ -993,6 +1032,80 @@ secondary IP ranges defined.
 
 The `gke-job-template` module is used to create a job file that can be submitted
 to the cluster using `kubectl` and will run on the specified node pool.
+
+#### Steps to deploy the blueprint
+
+1. Install Cluster Toolkit
+    1. Install [dependencies](https://cloud.google.com/cluster-toolkit/docs/setup/install-dependencies).
+    1. Set up [Cluster Toolkit](https://cloud.google.com/cluster-toolkit/docs/setup/configure-environment).
+1. Switch to the Cluster Toolkit directory
+
+   ```sh
+   cd cluster-toolkit
+   ```
+
+1. Get the IP address for your host machine
+
+   ```sh
+   curl ifconfig.me
+   ```
+
+1. Update the vars block of the blueprint file
+    1. `project_id`: ID of the project where you are deploying the cluster.
+    1. `deployment_name`: Name of the deployment.
+    1. `authorized_cidr`: update the IP address in <your-ip-address>/32.
+1. Build the Cluster Toolkit binary
+
+   ```sh
+   make
+   ```
+
+1. Provision the GKE cluster
+
+   ```sh
+   ./gcluster deploy examples/hpc-gke.yaml
+   ```
+
+1. Run the job
+
+    1. Connect to your cluster
+
+       ```sh
+       gcloud container clusters get-credentials CLUSTER_NAME --location=COMPUTE_REGION --project=PROJECT_ID
+       ```
+
+       * Update the `CLUSTER_NAME` to the `deployment_name`
+       * Update the `COMPUTE_REGION` to the `region` used in blueprint vars
+       * Update the `PROJECT_ID` to the `project_id` used in blueprint vars
+
+    1. The output of the `./gcluster deploy` on CLI includes a `kubectl create` command to create the job.
+
+       ```sh
+       kubectl create -f <job-yaml-path> 
+       ```
+
+       This command creates a job that uses busybox image and prints `Hello World`. This result can be viewed by looking at the pod logs.
+
+    1. List pods
+
+       ```sh
+       kubectl get pods
+       ```
+
+    1. Get the pod logs
+
+       ```sh
+       kubectl logs <pod-name>
+       ```
+
+#### Clean Up
+To destroy all resources associated with creating the GKE cluster, from Cloud Shell run the following command:
+
+```sh
+./gcluster destroy CLUSTER-NAME
+```
+
+Replace `CLUSTER-NAME` with the `deployment_name` used in blueprint vars block.
 
 [hpc-gke.yaml]: ../examples/hpc-gke.yaml
 
@@ -1119,6 +1232,48 @@ The blueprint contains the following:
 > `--vars authorized_cidr=<your-ip-address>/32`.** You can use a service like
 > [whatismyip.com](https://whatismyip.com) to determine your IP address.
 
+#### Steps to deploy the blueprint
+
+1. Install Cluster Toolkit
+    1. Install [dependencies](https://cloud.google.com/cluster-toolkit/docs/setup/install-dependencies).
+    1. Set up [Cluster Toolkit](https://cloud.google.com/cluster-toolkit/docs/setup/configure-environment).
+1. Switch to the Cluster Toolkit directory
+
+   ```sh
+   cd cluster-toolkit
+   ```
+
+1. Get the IP address for your host machine
+
+   ```sh
+   curl ifconfig.me
+   ```
+
+1. Update the vars block of the blueprint file
+    1. `project_id`: ID of the project where you are deploying the cluster.
+    1. `deployment_name`: Name of the deployment.
+    1. `authorized_cidr`: update the IP address in <your-ip-address>/32.
+1. Build the Cluster Toolkit binary
+
+   ```sh
+   make
+   ```
+
+1. Provision the GKE cluster
+
+   ```sh
+   ./gcluster deploy examples/gke-managed-hyperdisk.yaml
+   ```
+
+#### Clean Up
+To destroy all resources associated with creating the GKE cluster, from Cloud Shell run the following command:
+
+```sh
+./gcluster destroy CLUSTER-NAME
+```
+
+Replace `CLUSTER-NAME` with the `deployment_name` used in blueprint vars block.
+
 [gke-managed-hyperdisk.yaml]: ../examples/gke-managed-hyperdisk.yaml
 
 ### [gke-managed-parallelstore.yaml] ![core-badge] ![experimental-badge]
@@ -1145,6 +1300,48 @@ The blueprint contains the following:
 > `--vars authorized_cidr=<your-ip-address>/32`.** You can use a service like
 > [whatismyip.com](https://whatismyip.com) to determine your IP address.
 
+#### Steps to deploy the blueprint
+
+1. Install Cluster Toolkit
+    1. Install [dependencies](https://cloud.google.com/cluster-toolkit/docs/setup/install-dependencies).
+    1. Set up [Cluster Toolkit](https://cloud.google.com/cluster-toolkit/docs/setup/configure-environment).
+1. Switch to the Cluster Toolkit directory
+
+   ```sh
+   cd cluster-toolkit
+   ```
+
+1. Get the IP address for your host machine
+
+   ```sh
+   curl ifconfig.me
+   ```
+
+1. Update the vars block of the blueprint file
+    1. `project_id`: ID of the project where you are deploying the cluster.
+    1. `deployment_name`: Name of the deployment.
+    1. `authorized_cidr`: update the IP address in <your-ip-address>/32.
+1. Build the Cluster Toolkit binary
+
+   ```sh
+   make
+   ```
+
+1. Provision the GKE cluster
+
+   ```sh
+   ./gcluster deploy examples/gke-managed-parallelstore.yaml
+   ```
+
+#### Clean Up
+To destroy all resources associated with creating the GKE cluster, from Cloud Shell run the following command:
+
+```sh
+./gcluster destroy CLUSTER-NAME
+```
+
+Replace `CLUSTER-NAME` with the `deployment_name` used in blueprint vars block.
+
 [gke-managed-parallelstore.yaml]: ../examples/gke-managed-parallelstore.yaml
 
 ### [gke-a3-ultragpu.yaml] ![core-badge]
@@ -1155,7 +1352,7 @@ Refer to [AI Hypercomputer Documentation](https://cloud.google.com/ai-hypercompu
 
 ### [gke-a3-megagpu.yaml] ![core-badge]
 
-This blueprint shows how to provision a GKE cluster with A3 Mega machines in the toolkit.
+This blueprint shows how to provision a GKE cluster with A3 Mega machines in the toolkit. [Deploy an A3 Mega GKE cluster for ML training](https://cloud.google.com/cluster-toolkit/docs/deploy/deploy-a3-mega-gke-cluster) has the steps documented.
 
 After provisioning the cluster and the nodepool, the below components will be installed
 to enable GPUDirect for the A3 Mega machines.
@@ -1189,7 +1386,7 @@ If you see an error saying: `local-exec provisioner error` or `This environment 
   source $VENV_DIR/bin/activate
 ```
 
-[gke-a3-megagpu.yaml]: ../examples/gke-a3-megagpu.yaml
+[gke-a3-megagpu.yaml]: ../examples/gke-a3-megagpu
 
 ### [gke-a3-highgpu.yaml] ![core-badge]
 
