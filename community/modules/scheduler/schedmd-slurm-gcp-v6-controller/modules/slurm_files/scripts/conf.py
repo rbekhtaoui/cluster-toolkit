@@ -186,6 +186,37 @@ def nodeset_dyn_lines(nodeset):
         {"NodeSet": nodeset.nodeset_name, "Feature": nodeset.nodeset_feature}
     )
 
+def multiregional_nodeset_lines(nodeset, lkp: util.Lookup) -> str:
+    
+    template = list(nodeset.instance_template.values())[0]
+    template_info = lkp.template_info(template)
+    machine_conf = lkp.template_machine_conf(template)
+    
+    gres = f"gpu:{template_info.gpu_count}" if template_info.gpu_count else None
+    
+    node_conf = {
+        "RealMemory": machine_conf.memory,
+        "Boards": machine_conf.boards,
+        "SocketsPerBoard": machine_conf.sockets_per_board,
+        "CoresPerSocket": machine_conf.cores_per_socket,
+        "ThreadsPerCore": machine_conf.threads_per_core,
+        "CPUs": machine_conf.cpus,
+        "Gres": gres,
+        **nodeset.node_conf,
+    }
+    
+    nodelist = lkp.nodelist(nodeset)  
+    
+    return "\n".join(
+        map(
+            dict_to_conf,
+            [
+                {"NodeName": nodelist, "State": "CLOUD", **node_conf},
+                {"NodeSet": nodeset.nodeset_name, "Nodes": nodelist},
+            ],
+        )
+    )
+
 
 def partitionlines(partition, lkp: util.Lookup) -> str:
     """Make a partition line for the slurm.conf"""
@@ -207,6 +238,7 @@ def partitionlines(partition, lkp: util.Lookup) -> str:
             partition.partition_nodeset,
             partition.partition_nodeset_dyn,
             partition.partition_nodeset_tpu,
+            partition.partition_multiregional_nodeset,
         )
     )
 
@@ -262,6 +294,7 @@ def make_cloud_conf(lkp: util.Lookup) -> str:
         *(nodeset_lines(n, lkp) for n in lkp.cfg.nodeset.values()),
         *(nodeset_dyn_lines(n) for n in lkp.cfg.nodeset_dyn.values()),
         *(nodeset_tpu_lines(n, lkp) for n in lkp.cfg.nodeset_tpu.values()),
+        *(multiregional_nodeset_lines(n, lkp) for n in lkp.cfg.multiregional_nodeset.values()),
         *(partitionlines(p, lkp) for p in lkp.cfg.partitions.values()),
         *(suspend_exc_lines(lkp)),
     ]
@@ -376,6 +409,14 @@ def gen_cloud_gres_conf(lkp: util.Lookup) -> None:
         gpu_count = ti.gpu.count if ti.gpu  else 0
         if gpu_count:
             gpu_nodes[gpu_count].append(lkp.nodelist(nodeset))
+
+    for nodeset in lkp.cfg.multiregional_nodeset.values():
+        template_info = lkp.template_info(next(iter(nodeset.instance_template.values())))
+        gpu_count = template_info.gpu_count
+        if gpu_count == 0:
+            continue
+        nodelist = lkp.nodelist(nodeset) 
+        gpu_nodes[gpu_count].append(nodelist)
 
     lines = [
         dict_to_conf(
@@ -595,6 +636,8 @@ def gen_topology(lkp: util.Lookup) -> TopologyBuilder:
     for ns in lkp.cfg.nodeset_tpu.values():
         add_tpu_nodeset_topology(ns, bldr, lkp)
     for ns in lkp.cfg.nodeset.values():
+        add_nodeset_topology(ns, bldr, lkp)
+    for ns in lkp.cfg.multiregional_nodeset.values():
         add_nodeset_topology(ns, bldr, lkp)
     return bldr
 

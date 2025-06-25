@@ -1,0 +1,92 @@
+---
+blueprint_name: hpc-slurm-multiregion
+
+vars:
+  project_id:  hpc4-gcp-renault
+  deployment_name: hpc-slurm
+  regions_info:
+    - name: us-central1
+      zones:
+        - us-central1-a
+        - us-central1-b
+        - us-central1-c
+        - us-central1-f
+    - name: europe-west4
+      zones:
+        - europe-west4-a
+        - europe-west4-b
+        - europe-west4-c
+
+
+deployment_groups:
+- group: primary
+  modules:
+  - id: network
+    source: modules/network/vpc
+    settings:
+      region: $(vars.regions_info[0].name)
+      subnetworks:
+        - subnet_name: subnet-us
+          subnet_region: $(vars.regions_info[0].name)
+          subnet_ip: 10.0.0.0/24
+        - subnet_name: subnet-europe
+          subnet_region: $(vars.regions_info[1].name)
+          subnet_ip: 10.1.0.0/24
+  
+  - id: subnetwork_us
+    source: ../custom/subnetworks/
+    settings:
+      subnet_name: subnet-us
+      subnet_region: $(vars.regions_info[0].name)
+  
+  - id: subnetwork_europe
+    source: ../custom/subnetworks/
+    settings:
+      subnet_name: subnet-europe
+      subnet_region: $(vars.regions_info[1].name)
+
+
+  - id: compute_nodeset
+    source: community/modules/compute/schedmd-slurm-gcp-v6-nodeset
+    use: [network]
+    settings:
+      node_count_dynamic_max: 20
+      bandwidth_tier: gvnic_enabled
+      allow_automatic_updates: false
+      region: $(vars.regions_info[0].name)
+      zone: $(vars.regions_info[0].zones[0])
+
+  - id: compute_partition
+    source: community/modules/compute/schedmd-slurm-gcp-v6-partition
+    use:
+    - compute_nodeset
+    settings:
+      partition_name: compute
+
+  - id: multiregional_nodeset
+    source: community/modules/compute/schedmd-slurm-gcp-v6-multiregional-nodeset
+    settings:
+      node_count_dynamic_max: 20
+      bandwidth_tier: gvnic_enabled
+      allow_automatic_updates: false
+      subnetworks_self_link: 
+        - (( module.subnetwork_us.subnet_self_link ))
+        - (( module.subnetwork_europe.subnet_self_link ))
+
+  - id: multiregional_nodeset_partition
+    source: community/modules/compute/schedmd-slurm-gcp-v6-partition
+    use:
+    - multiregional_nodeset
+    settings:
+      partition_name: compute-multiregional
+  
+  - id: slurm_controller
+    source: community/modules/scheduler/schedmd-slurm-gcp-v6-controller
+    use:
+    - network
+    - compute_partition
+    - multiregional_nodeset_partition
+    settings:
+      enable_controller_public_ips: false
+      region: $(vars.regions_info[0].name)
+      zone: $(vars.regions_info[0].zones[0])

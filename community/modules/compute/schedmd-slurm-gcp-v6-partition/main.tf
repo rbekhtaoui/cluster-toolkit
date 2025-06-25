@@ -16,10 +16,11 @@ locals {
   use_static        = [for ns in concat(var.nodeset, var.nodeset_tpu) : ns.nodeset_name if ns.node_count_static > 0]
   uses_job_duration = length([for ns in var.nodeset : ns.dws_flex.use_job_duration if ns.dws_flex.use_job_duration]) > 0
 
-  has_node = length(var.nodeset) > 0
-  has_dyn  = length(var.nodeset_dyn) > 0
-  has_tpu  = length(var.nodeset_tpu) > 0
-  has_flex = length([for ns in var.nodeset : ns.dws_flex.enabled if ns.dws_flex.enabled]) > 0
+  has_node                = length(var.nodeset) > 0
+  has_dyn                 = length(var.nodeset_dyn) > 0
+  has_tpu                 = length(var.nodeset_tpu) > 0
+  has_flex                = length([for ns in var.nodeset : ns.dws_flex.enabled if ns.dws_flex.enabled]) > 0
+  has_multiregional_nodes = length(var.multiregional_nodeset) > 0
 }
 
 locals {
@@ -33,9 +34,10 @@ locals {
     partition_name = var.partition_name
     partition_conf = local.partition_conf
 
-    partition_nodeset     = [for ns in var.nodeset : ns.nodeset_name]
-    partition_nodeset_tpu = [for ns in var.nodeset_tpu : ns.nodeset_name]
-    partition_nodeset_dyn = [for ns in var.nodeset_dyn : ns.nodeset_name]
+    partition_nodeset               = [for ns in var.nodeset : ns.nodeset_name]
+    partition_nodeset_tpu           = [for ns in var.nodeset_tpu : ns.nodeset_name]
+    partition_nodeset_dyn           = [for ns in var.nodeset_dyn : ns.nodeset_name]
+    partition_multiregional_nodeset = [for ns in var.multiregional_nodeset : ns.nodeset_name]
     # Options
     enable_job_exclusive = var.exclusive
   }
