@@ -41,11 +41,11 @@ vars:
   # The number of nodes to be created
   static_node_count: 2
 
-  # The name of the compute engine reservation of A3 Mega nodes in the form of
-  # <project>/<reservation-name>
-  # In order to target a BLOCK_NAME, extended_reservation can be inputted as
-  # <project>/<reservation-name>/reservationBlocks/<reservation-block-name>
-  extended_reservation:
+  # The name of the compute engine reservation in the form of
+  # <reservation-name>
+  # To target a BLOCK_NAME, the name of the extended reservation
+  # can be inputted as <reservation-name>/reservationBlocks/<reservation-block-name>
+  reservation:
 
   accelerator_type: nvidia-h100-mega-80gb
   version_prefix: "1.32."
@@ -130,7 +130,7 @@ deployment_groups:
       reservation_affinity:
         consume_reservation_type: SPECIFIC_RESERVATION
         specific_reservations:
-        - name: $(vars.extended_reservation)
+        - name: $(vars.reservation)
     outputs: [instructions]
 
   - id: workload_manager_install

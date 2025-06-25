@@ -28,7 +28,7 @@ DebugFlags=Power
 #
 #
 # TIMERS
-MessageTimeout=60
+MessageTimeout=120
 
 ################################################################################
 #              vvvvv  WARNING: DO NOT MODIFY SECTION BELOW  vvvvv              #
@@ -52,7 +52,7 @@ StateSaveLocation={state_save}
 #
 # LOGGING AND ACCOUNTING
 AccountingStorageType=accounting_storage/slurmdbd
-AccountingStorageHost={control_host}
+AccountingStorageHost={accounting_storage_host}
 ClusterName={name}
 SlurmctldLogFile={slurmlog}/slurmctld.log
 SlurmdLogFile={slurmlog}/slurmd-%n.log
