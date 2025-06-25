@@ -22,6 +22,8 @@ locals {
   nodeset_dyn_map_ell = { for x in var.nodeset_dyn : x.nodeset_name => x... }
   nodeset_dyn_map     = { for k, vs in local.nodeset_dyn_map_ell : k => vs[0] }
 
+  multiregional_nodeset_map_ell = { for x in var.multiregional_nodeset : x.nodeset_name => x... }
+  multiregional_nodeset_map     = { for k, vs in local.multiregional_nodeset_map_ell : k => vs[0] }
 
   no_reservation_affinity = { type : "NO_RESERVATION" }
 }
@@ -169,4 +171,95 @@ resource "google_storage_bucket_object" "parition_config" {
 moved {
   from = module.slurm_files.google_storage_bucket_object.parition_config
   to   = google_storage_bucket_object.parition_config
+}
+
+## Multiregioanl nodeset#######
+locals {
+  nodeset_regions = flatten([
+    for nodeset_name, nodeset in local.multiregional_nodeset_map : [
+      for region in nodeset.regions : {
+        nodeset_name        = nodeset_name
+        region              = region
+        subnetwork_self_link = nodeset.subnetworks_self_link[region]
+        nodeset_config      = nodeset
+      }
+    ]
+  ])
+
+  nodeset_region_map = {
+    for item in local.nodeset_regions : 
+      "${item.nodeset_name}-${item.region}" => item
+  }
+}
+
+module "slurm_multiregional_nodeset_template" {
+  source   = "github.com/rbekhtaoui/cluster-toolkit/community/modules/internal/slurm-gcp/instance_template"
+  for_each = local.nodeset_region_map
+
+  project_id          = var.project_id
+  slurm_cluster_name  = local.slurm_cluster_name
+  slurm_instance_role = "compute"
+  slurm_bucket_path   = module.slurm_files.slurm_bucket_path
+
+  subnetwork               = each.value.subnetwork_self_link
+  region                   = each.value.region
+  additional_disks         = each.value.nodeset_config.additional_disks
+  bandwidth_tier           = each.value.nodeset_config.bandwidth_tier
+  can_ip_forward           = each.value.nodeset_config.can_ip_forward
+  advanced_machine_features = each.value.nodeset_config.advanced_machine_features
+  disk_auto_delete         = each.value.nodeset_config.disk_auto_delete
+  disk_labels              = each.value.nodeset_config.disk_labels
+  disk_size_gb             = each.value.nodeset_config.disk_size_gb
+  disk_type                = each.value.nodeset_config.disk_type
+  enable_confidential_vm   = each.value.nodeset_config.enable_confidential_vm
+  enable_oslogin           = each.value.nodeset_config.enable_oslogin
+  enable_shielded_vm       = each.value.nodeset_config.enable_shielded_vm
+  gpu                      = each.value.nodeset_config.gpu
+  labels                   = each.value.nodeset_config.labels
+  machine_type             = each.value.nodeset_config.machine_type
+  metadata                 = merge(each.value.nodeset_config.metadata, local.universe_domain)
+  min_cpu_platform         = each.value.nodeset_config.min_cpu_platform
+  on_host_maintenance      = each.value.nodeset_config.on_host_maintenance
+  preemptible              = each.value.nodeset_config.preemptible
+  spot                     = each.value.nodeset_config.spot
+  termination_action       = each.value.nodeset_config.termination_action
+  service_account          = each.value.nodeset_config.service_account
+  shielded_instance_config = each.value.nodeset_config.shielded_instance_config
+  source_image_family      = each.value.nodeset_config.source_image_family
+  source_image_project     = each.value.nodeset_config.source_image_project
+  source_image             = each.value.nodeset_config.source_image
+  additional_networks      = each.value.nodeset_config.additional_networks
+  access_config            = each.value.nodeset_config.access_config
+  tags                     = concat([local.slurm_cluster_name], each.value.nodeset_config.tags)
+}
+locals {
+  templates_by_nodeset = {
+    for name, nodeset in local.multiregional_nodeset_map : name => {
+      for region in nodeset.regions : 
+        region => module.slurm_multiregional_nodeset_template["${name}-${region}"].self_link
+    }
+  }
+
+  multiregional_nodesets = [
+    for name, ns in local.multiregional_nodeset_map : {
+      nodeset_name                     = ns.nodeset_name
+      node_conf                        = ns.node_conf
+      dws_flex                         = ns.dws_flex
+      instance_template                = local.templates_by_nodeset[name]
+      node_count_dynamic_max           = ns.node_count_dynamic_max
+      node_count_static                = ns.node_count_static
+      subnetwork                       = ns.subnetworks_self_link  
+      regions                          = ns.regions
+      reservation_name                 = ns.reservation_name
+      maintenance_interval             = ns.maintenance_interval
+      instance_properties_json         = ns.instance_properties_json
+      enable_placement                 = ns.enable_placement
+      network_storage                  = ns.network_storage
+      zone_target_shape                = ns.zone_target_shape
+      zone_policy_allow                = ns.zone_policy_allow
+      zone_policy_deny                 = ns.zone_policy_deny
+      enable_maintenance_reservation   = ns.enable_maintenance_reservation
+      enable_opportunistic_maintenance = ns.enable_opportunistic_maintenance
+    }
+  ]
 }
