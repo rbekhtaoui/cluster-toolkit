@@ -141,30 +141,55 @@ resource "google_storage_bucket_object" "config" {
   ]
 }
 
-resource "google_storage_bucket_object" "nodeset_config" {
+resource "null_resource" "nodeset_config" {
   for_each = { for ns in var.nodeset : ns.nodeset_name => merge(ns, {
     instance_properties = jsondecode(ns.instance_properties_json)
   }) }
 
-  bucket  = data.google_storage_bucket.this.name
-  name    = "${local.bucket_dir}/nodeset_configs/${each.key}.yaml"
-  content = yamlencode(each.value)
+  triggers = {
+    content = yamlencode(each.value)
+  }
+}
+
+resource "google_storage_bucket_object" "nodeset_config" {
+  for_each = null_resource.nodeset_config
+
+  bucket = data.google_storage_bucket.this.name
+  name = "${local.bucket_dir}/nodeset_configs/${each.key}-${substr(md5(each.value.triggers.content), 0, 6)}.yaml"
+  content = each.value.triggers.content  
+}
+
+
+resource "null_resource" "nodeset_dyn_config" {
+  for_each = { for ns in var.nodeset_dyn : ns.nodeset_name => ns }
+
+  triggers = {
+    content = yamlencode(each.value)
+  }
 }
 
 resource "google_storage_bucket_object" "nodeset_dyn_config" {
-  for_each = { for ns in var.nodeset_dyn : ns.nodeset_name => ns }
+  for_each = null_resource.nodeset_dyn_config
 
   bucket  = data.google_storage_bucket.this.name
-  name    = "${local.bucket_dir}/nodeset_dyn_configs/${each.key}.yaml"
-  content = yamlencode(each.value)
+  name    = "${local.bucket_dir}/nodeset_dyn_configs/${each.key}-${substr(md5(each.value.triggers.content), 0, 6)}.yaml"
+  content = each.value.triggers.content
+}
+
+resource "null_resource" "nodeset_tpu_config" {
+  for_each = { for n in var.nodeset_tpu[*].nodeset : n.nodeset_name => n }
+
+  triggers = {
+    content = yamlencode(each.value)
+  }
 }
 
 resource "google_storage_bucket_object" "nodeset_tpu_config" {
-  for_each = { for n in var.nodeset_tpu[*].nodeset : n.nodeset_name => n }
+  for_each = null_resource.nodeset_tpu_config
 
   bucket  = data.google_storage_bucket.this.name
-  name    = "${local.bucket_dir}/nodeset_tpu_configs/${each.key}.yaml"
-  content = yamlencode(each.value)
+  name    = "${local.bucket_dir}/nodeset_tpu_configs/${each.key}-${substr(md5(each.value.triggers.content), 0, 6)}.yaml"
+  content = each.value.triggers.content
 }
 
 #########
