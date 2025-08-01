@@ -117,6 +117,18 @@ variable "cgroup_conf_tpl" {
   default     = null
 }
 
+variable "slurm_qos_list" {
+  description = "Slurm QoS definitions with specs and target assignments (partitions, accounts, users)."
+  type = map(object({
+    specs = map(string),
+    targets = list(object({
+      type    = string,
+      names   = list(string),
+      default = bool
+    })),
+  }))
+}
+
 variable "cloudsql_secret" {
   description = "Secret URI to cloudsql secret."
   type        = string

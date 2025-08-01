@@ -156,6 +156,7 @@ module "slurm_files" {
   extra_logging_flags  = var.extra_logging_flags
 
   enable_slurm_auth = var.enable_slurm_auth
+  slurm_qos_list    = var.slurm_qos_list
 
   enable_bigquery_load               = var.enable_bigquery_load
   enable_external_prolog_epilog      = var.enable_external_prolog_epilog
