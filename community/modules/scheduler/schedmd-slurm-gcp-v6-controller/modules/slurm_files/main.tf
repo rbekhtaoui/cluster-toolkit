@@ -74,6 +74,7 @@ locals {
     task_prolog_scripts = [for k, v in google_storage_bucket_object.task_prolog_scripts : k]
     task_epilog_scripts = [for k, v in google_storage_bucket_object.task_epilog_scripts : k]
     cloud_parameters    = var.cloud_parameters
+    slurm_qos_list      = var.slurm_qos_list
 
     # hybrid
     hybrid                        = var.enable_hybrid

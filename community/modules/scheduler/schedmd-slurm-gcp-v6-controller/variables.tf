@@ -831,3 +831,16 @@ Use `startup_script` of nodeset module instead.
 EOD
   }
 }
+
+variable "slurm_qos_list" {
+  description = "Slurm QoS definitions with specs and target assignments (partitions, accounts, users)."
+  type = map(object({
+    specs = map(string),
+    targets = list(object({
+      type    = string,
+      names   = list(string),
+      default = bool
+    })),
+  }))
+  default = null
+}

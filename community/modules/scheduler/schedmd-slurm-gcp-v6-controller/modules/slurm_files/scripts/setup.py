@@ -446,6 +446,40 @@ def self_report_controller_address(lkp: util.Lookup) -> None:
     with blob.open('w') as f:
         f.write(yaml.dump(data))
 
+def configure_slurm_qos():
+    qos_list = lookup().cfg.get('slurm_qos_list', {})
+    
+    if not qos_list:
+        log.info("slurm_qos_list is empty or null, skipping QoS configuration")
+        return
+    
+    sacctmgr = f"{slurmdirs.prefix}/bin/sacctmgr -i"
+    run(f"{sacctmgr} create account name=slurm-default MaxSubmitJobs=0 defaultqos=normal", check=False)
+    
+    for qos_name, qos in qos_list.items():
+        specs_cmd = " ".join(f"{k}={v}" for k, v in qos.get('specs', {}).items())
+        run(f"{sacctmgr} create qos {qos_name} {specs_cmd}", check=False)
+       
+        for target in qos.get('targets', []):
+            if not target:
+                continue
+           
+            if target.get('type') == 'partition':
+                for name in target.get('names', []):
+                    run(f"scontrol update PartitionName={name} QOS={qos_name}", check=False)
+           
+            elif target.get('type') == 'account':
+                names = ",".join(target.get('names', []))
+                default_qos = f"defaultqos={qos_name}" if target.get('default') else ""
+                run(f"{sacctmgr} modify account where name={names} set qos+={qos_name} {default_qos}", check=False)
+           
+            elif target.get('type') == 'user':
+                names = ",".join(target.get('names', []))
+                default_qos = f"defaultqos={qos_name}" if target.get('default') else ""
+                run(f"{sacctmgr} modify user where name={names} set qos+={qos_name} {default_qos}", check=False)
+   
+    log.info("Slurm QoS configuration complete")
+
 def setup_controller():
     """Run controller setup"""
     log.info("Setting up controller")
@@ -484,6 +518,8 @@ def setup_controller():
         log.info(result.stdout)
     elif result.returncode > 1:
         result.check_returncode()  # will raise error
+
+    configure_slurm_qos()
 
     run("systemctl enable slurmctld", timeout=30)
     run("systemctl restart slurmctld", timeout=30)
