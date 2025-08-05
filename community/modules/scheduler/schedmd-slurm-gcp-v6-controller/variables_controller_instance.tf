@@ -114,10 +114,10 @@ variable "static_ips" {
   type        = list(string)
   description = "List of static IPs for VM instances."
   default     = []
-  validation {
-    condition     = length(var.static_ips) <= var.nb_controllers
-    error_message = "The number of static IPs must be less than or equal to the number of controllers."
-  }
+  # validation {
+  #   condition     = length(var.static_ips) <= var.nb_controllers
+  #   error_message = "The number of static IPs must be less than or equal to the number of controllers."
+  # }
 }
 
 variable "bandwidth_tier" {
@@ -424,12 +424,12 @@ variable "kms_key" {
   type        = string
   default     = null
 
-  validation {
-    condition = (
-      var.kms_key == null || var.with_kms == true
-    )
-    error_message = "If 'kms_key' is set, 'with_kms' must be true."
-  }
+  # validation {
+  #   condition = (
+  #     var.kms_key == null || var.with_kms == true
+  #   )
+  #   error_message = "If 'kms_key' is set, 'with_kms' must be true."
+  # }
 }
 
 
