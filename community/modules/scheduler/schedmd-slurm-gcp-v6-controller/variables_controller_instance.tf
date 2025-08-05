@@ -234,17 +234,17 @@ variable "machine_type" {
   default     = "n4-standard-4"
 
 
-  validation {
-    condition = (
-      var.nb_controllers <= 1 ||
-      (
-        can(regex("^(c3|c3d|c4a|n4|z3|m3|a3)-[a-z0-9-]+-\\d+$", var.machine_type)) &&
-        try(tonumber(regex("\\d+$", var.machine_type)), 0) >= 4
-      )
-    )
+  # validation {
+  #   condition = (
+  #     var.nb_controllers <= 1 ||
+  #     (
+  #       can(regex("^(c3|c3d|c4a|n4|z3|m3|a3)-[a-z0-9-]+-\\d+$", var.machine_type)) &&
+  #       try(tonumber(regex("\\d+$", var.machine_type)), 0) >= 4
+  #     )
+  #   )
 
-    error_message = "The selected machine type is not compatible with 'hyperdisk-balanced-high-availability'. Please choose a supported type such as C4A, C3, C3D, N4, Z3, M3, or A3 (H100/H200)."
-  }
+  #   error_message = "The selected machine type is not compatible with 'hyperdisk-balanced-high-availability'. Please choose a supported type such as C4A, C3, C3D, N4, Z3, M3, or A3 (H100/H200)."
+  # }
 }
 
 variable "metadata" {
