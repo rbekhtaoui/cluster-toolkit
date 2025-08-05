@@ -26,6 +26,7 @@ import yaml
 from pathlib import Path
 import functools
 import base64
+import base64
 
 import util
 from util import (
@@ -223,6 +224,13 @@ def setup_jwt_key(lkp: util.Lookup):
         wait_for_key(jwt_key, timeout=300) 
 
 def _generate_key(p: Path) -> None:
+
+    if lookup().cfg.munge_key:
+        encoded = util.decrypt(lookup().cfg.kms_key, lookup().cfg.munge_key)   
+        with p.open('wb') as f:
+            f.write(base64.b64decode(encoded))
+    else:
+        run(f"dd if=/dev/random of={p} bs=1024 count=1")
 
     if lookup().cfg.munge_key:
         encoded = util.decrypt(lookup().cfg.kms_key, lookup().cfg.munge_key)   

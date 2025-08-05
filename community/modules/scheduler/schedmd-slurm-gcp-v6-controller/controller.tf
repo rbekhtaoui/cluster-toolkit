@@ -312,11 +312,19 @@ resource "google_kms_key_ring" "keyring" {
 #############################
 
 resource "google_kms_crypto_key" "key" {
-  count           = var.with_kms ? 1 : 0
+  count           = var.with_kms && var.kms_key == null ? 1 : 0
   name            = "${local.slurm_cluster_name}-keyring-key"
   key_ring        = one(google_kms_key_ring.keyring[*].id)
   rotation_period = var.kms.rotation
 
+}
+
+#############################
+# LOCAL KMS KEY REFERENCE
+#############################
+
+locals {
+  kms_key = var.with_kms && var.kms_key == null ? one(google_kms_crypto_key.key[*].id) : var.kms_key
 }
 
 #############################
@@ -329,7 +337,7 @@ resource "google_kms_crypto_key_iam_member" "encrypter" {
     controller = "serviceAccount:${local.service_account.email}"
   } : {}
 
-  crypto_key_id = one(google_kms_crypto_key.key[*].id)
+  crypto_key_id = local.kms_key
   role          = "roles/cloudkms.cryptoKeyEncrypter"
   member        = each.value
 }
@@ -344,17 +352,9 @@ resource "google_kms_crypto_key_iam_member" "decrypter" {
     )
   ) : {}
 
-  crypto_key_id = one(google_kms_crypto_key.key[*].id)
+  crypto_key_id = local.kms_key
   role          = "roles/cloudkms.cryptoKeyDecrypter"
   member        = each.value
-}
-
-#############################
-# LOCAL KMS KEY REFERENCE
-#############################
-
-locals {
-  kms_key = var.with_kms ? one(google_kms_crypto_key.key[*].id) : null
 }
 
 #############################
