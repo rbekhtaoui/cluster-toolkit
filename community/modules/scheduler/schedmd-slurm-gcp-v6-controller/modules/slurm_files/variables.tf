@@ -505,6 +505,13 @@ variable "kms_key" {
   description = "Key to use to encrypt/decrypt secrets"
   type        = string
   default     = null
+
+  validation {
+    condition = (
+      var.kms_key == null || var.with_kms == true
+    )
+    error_message = "If 'kms_key' is set, 'with_kms' must be true."
+  }
 }
 
 variable "munge_key" {
