@@ -383,7 +383,7 @@ variable "resource_manager_tags" {
 variable "with_kms" {
   description = "Enable or disable KMS resource creation"
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "kms" {
@@ -400,7 +400,15 @@ variable "kms_key" {
   description = "Key to use to encrypt/decrypt secrets"
   type        = string
   default     = null
+
+  validation {
+    condition = (
+      var.kms_key == null || var.with_kms == true
+    )
+    error_message = "If 'kms_key' is set, 'with_kms' must be true."
+  }
 }
+
 
 variable "munge_key" {
   description = "Specific munge key to use"
