@@ -60,3 +60,11 @@ output "instructions" {
       gcloud logging read labels.hostname=${local.slurm_cluster_name}-controller
   EOT
 }
+
+output "static_ips" {
+  value = var.static_ips
+}
+
+output "controllers_names" {
+  value = local.slurm_control_hosts
+}
