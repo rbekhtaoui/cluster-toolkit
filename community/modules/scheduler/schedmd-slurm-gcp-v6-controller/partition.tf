@@ -194,7 +194,7 @@ locals {
 }
 
 module "slurm_multiregional_nodeset_template" {
-  source   = "github.com/rbekhtaoui/cluster-toolkit/community/modules/internal/slurm-gcp/instance_template"
+  source   = "../../internal/slurm-gcp/instance_template"
   for_each = local.nodeset_region_map
 
   project_id          = var.project_id
