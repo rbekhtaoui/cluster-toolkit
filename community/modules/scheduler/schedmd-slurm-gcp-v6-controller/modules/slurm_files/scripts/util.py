@@ -951,26 +951,17 @@ def run(
     log_subprocess(result)
     return result
 
-# def log_subprocess(subj: subprocess.CalledProcessError | subprocess.TimeoutExpired | subprocess.CompletedProcess) -> None:
-#     match subj:
-#         case subprocess.CompletedProcess(returncode=0):
-#             # Do not log successful runs, to not overwhelm logs (e.g. scontrol show jobs --json)
-#             # TODO: consider still doing it in DEBUG or trim output to few KBs. 
-#             return
-#         case subprocess.CompletedProcess(): # non-zero returncode
-#             log.error(f"Command '{subj.args}' returned exit status {subj.returncode}.")
-#         case subprocess.CalledProcessError() | subprocess.TimeoutExpired():
-#             log.error(str(subj))
-        
 def log_subprocess(subj: subprocess.CalledProcessError | subprocess.TimeoutExpired | subprocess.CompletedProcess) -> None:
-    
-    if isinstance(subj, subprocess.CompletedProcess) and subj.returncode == 0:
-        return  
-    
-    if isinstance(subj, subprocess.CompletedProcess):
-        log.error(f"Command '{subj.args}' returned exit status {subj.returncode}.")
-    else:
-        log.error(str(subj))
+    match subj:
+        case subprocess.CompletedProcess(returncode=0):
+            # Do not log successful runs, to not overwhelm logs (e.g. scontrol show jobs --json)
+            # TODO: consider still doing it in DEBUG or trim output to few KBs. 
+            return
+        case subprocess.CompletedProcess(): # non-zero returncode
+            log.error(f"Command '{subj.args}' returned exit status {subj.returncode}.")
+        case subprocess.CalledProcessError() | subprocess.TimeoutExpired():
+            log.error(str(subj))
+        
 
     def normalize(out: None | str | bytes) -> None | str:
         """
