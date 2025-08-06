@@ -458,7 +458,7 @@ def resume_nodes(nodes: List[str], resume_data: Optional[ResumeData]):
     for chunk in flex_chunks:
         mig_flex.resume_flex_chunk(chunk.nodes, chunk.excl_job_id, lkp)
     
-    if len(regions) == 1
+    if len(regions) == 1 :
         # execute all bulkInsert requests  with batch
         bulk_ops = dict(
             zip(bi_inserts.keys(), map_with_futures(ensure_execute, bi_inserts.values()))
