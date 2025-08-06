@@ -510,7 +510,7 @@ def setup_controller():
 
     if not lookup().cfg.cloudsql_secret and lookup().is_primary_controller:
         log.info("Configure mysql on primary controller...")
-        configure_mysql()
+        configure_mysql(lkp)
 
     run("systemctl enable slurmdbd", timeout=30)
     run("systemctl restart slurmdbd", timeout=30)
