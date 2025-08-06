@@ -508,7 +508,7 @@ def setup_controller():
 
     run_custom_scripts()
 
-    if not lookup().cfg.cloudsql_secret and lookup().is_primary_controller:
+    if not (lookup().cfg.cloudsql_secret or lookup().cfg.cloudsql) and lookup().is_primary_controller:
         log.info("Configure mysql on primary controller...")
         configure_mysql(lkp)
 
