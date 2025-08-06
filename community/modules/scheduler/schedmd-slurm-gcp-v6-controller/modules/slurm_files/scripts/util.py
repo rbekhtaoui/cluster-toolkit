@@ -606,6 +606,7 @@ class _ConfigBlobs:
     nodeset: List[storage.Blob] = field(default_factory=list)
     nodeset_dyn: List[storage.Blob] = field(default_factory=list)
     nodeset_tpu: List[storage.Blob] = field(default_factory=list)
+    multiregional_nodeset: List[storage.Blob] = field(default_factory=list)
     login_group: List[storage.Blob] = field(default_factory=list)
 
     @property
@@ -638,7 +639,7 @@ def _list_config_blobs() -> _ConfigBlobs:
 
     core: Optional[storage.Blob] = None
     controller_addr: Optional[storage.Blob] = None
-    rest: Dict[str, List[storage.Blob]] = {"partition": [], "nodeset": [], "nodeset_dyn": [], "nodeset_tpu": [], "login_group": []}
+    rest: Dict[str, List[storage.Blob]] = {"partition": [], "nodeset": [], "nodeset_dyn": [], "nodeset_tpu": [], "multiregional_nodeset":[], "login_group": []}
 
     is_controller = instance_role() == "controller"
 
@@ -695,6 +696,7 @@ def _fetch_config(old_hash: Optional[str]) -> Optional[Tuple[NSDict, str]]:
         nodesets=_download(blobs.nodeset),
         nodesets_dyn=_download(blobs.nodeset_dyn),
         nodesets_tpu=_download(blobs.nodeset_tpu),
+        multiregional_nodeset=_download(blobs.multiregional_nodeset),
         login_groups=_download(blobs.login_group),
     ), blobs.hash
 
@@ -718,6 +720,7 @@ def _fetch_mounted_config() -> Optional[Tuple[NSDict, str]]:
         nodesets=_load(files.nodeset),
         nodesets_dyn=_load(files.nodeset_dyn),
         nodesets_tpu=_load(files.nodeset_tpu),
+        multiregional_nodeset=_load(files.multiregional_nodeset),
         login_groups=_load(files.login_group),
     )
 
@@ -735,6 +738,7 @@ def _assemble_config(
         nodesets: List[Any],
         nodesets_dyn: List[Any],
         nodesets_tpu: List[Any],
+        multiregional_nodeset: List[Any],
         login_groups: List[Any],
     ) -> NSDict:
     cfg = NSDict(core)
@@ -771,10 +775,11 @@ def _assemble_config(
     _add_nodesets(nodesets, cfg.nodeset)
     _add_nodesets(nodesets_dyn, cfg.nodeset_dyn)
     _add_nodesets(nodesets_tpu, cfg.nodeset_tpu)
+    _add_nodesets(multiregional_nodeset, cfg.multiregional_nodeset)
 
     # validate that configs for all referenced nodesets are present
     for p in cfg.partitions.values():
-        for ns_name in chain(p.partition_nodeset, p.partition_nodeset_dyn, p.partition_nodeset_tpu):
+        for ns_name in chain(p.partition_nodeset, p.partition_nodeset_dyn, p.partition_nodeset_tpu, p.partition_multiregional_nodeset):
             if ns_name not in ns_names:
                 raise DeffetiveStoredConfigError(f"nodeset {ns_name} not defined in config")
             
@@ -1615,7 +1620,10 @@ class Lookup:
         nodeset_name = self.node_nodeset_name(node_name)
         if nodeset_name in self.cfg.nodeset_tpu:
             return self.cfg.nodeset_tpu[nodeset_name]
-
+        
+        if nodeset_name in self.cfg.multiregional_nodeset:
+            return self.cfg.multiregional_nodeset[nodeset_name]
+        
         return self.cfg.nodeset[nodeset_name]
 
     def partition_is_tpu(self, part: str) -> bool:
@@ -1627,8 +1635,9 @@ class Lookup:
         nodeset_name = self.node_nodeset_name(node_name)
         return self.cfg.nodeset_tpu.get(nodeset_name) is not None
 
-    def nodeset_is_tpu(self, nodeset_name=None) -> bool:
-        return self.cfg.nodeset_tpu.get(nodeset_name) is not None
+    def node_is_multiregional(self, node_name=None) -> bool:
+        nodeset_name = self.node_nodeset_name(node_name)
+        return self.cfg.multiregional_nodeset.get(nodeset_name) is not None
 
     def node_is_fr(self, node_name:str) -> bool:
         return bool(self.node_nodeset(node_name).future_reservation)
@@ -1654,6 +1663,13 @@ class Lookup:
         nodeset = self.node_nodeset(node_name)
         return parse_self_link(nodeset.subnetwork).region
 
+    def multiregional_nodeset_regions(self, node_names: List[str]) -> List[str]:
+        nodesets = {self.node_nodeset_name(n) for n in node_names}
+        regions = set()
+        for ns in nodesets:
+            regions.update(self._cfg.multiregional_nodeset[ns].regions)
+        return list(regions)
+    
     def nodeset_accelerator_topology(self, nodeset_name: str) -> Optional[str]:
         if not self.nodeset_is_tpu(nodeset_name):
             return self.cfg.nodeset[nodeset_name].get('accelerator_topology')
@@ -1687,7 +1703,7 @@ class Lookup:
         )
 
     def power_managed_nodesets(self) -> Iterable[NSDict]:
-        return chain(self.cfg.nodeset.values(), self.cfg.nodeset_tpu.values())
+        return chain(self.cfg.nodeset.values(), self.cfg.nodeset_tpu.values(), self.cfg.multiregional_nodeset.values())
 
     def is_power_managed_node(self, node_name: str) -> bool:
         try:

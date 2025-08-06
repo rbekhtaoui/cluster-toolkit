@@ -352,6 +352,12 @@ variable "nodeset_tpu" {
   default     = []
 }
 
+variable "multiregional_nodeset" {
+  description = "Cluster multiregional nodesets, as a list."
+  type        = list(any)
+  default     = []
+}
+
 variable "cloud_parameters" {
   description = "cloud.conf options. Default behavior defined in scripts/conf.py"
   type = object({
