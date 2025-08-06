@@ -735,7 +735,7 @@ def main():
             log.exception(f"unexpected error while fetching config, sleeping for {sleep_seconds}s")
         time.sleep(sleep_seconds)
     log.info("Config fetched")
-    setup_cloud_ops()
+    #setup_cloud_ops()
     configure_dirs()
     # call the setup function for the instance type
     {
