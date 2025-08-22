@@ -209,18 +209,13 @@ def mount_save_state_disk():
 def setup_jwt_key(lkp: util.Lookup):
     jwt_key = Path(slurmdirs.state / "jwt_hs256.key")
     
-    if lkp.is_primary_controller:
-        if lookup().cfg.jwt_key:
-            encoded = util.decrypt(lookup().cfg.kms_key, lookup().cfg.jwt_key)
-            with jwt_key.open('wb') as f:
-                f.write(base64.b64decode(encoded))
-        else:
-            log.info("Primary controller generating JWT key...")
-            util.run("dd if=/dev/urandom bs=32 count=1 >"+str(jwt_key), shell=True)
-        util.chown_slurm(jwt_key, mode=0o400)
+    if lookup().cfg.jwt_key:
+        encoded = util.decrypt(lookup().cfg.kms_key, lookup().cfg.jwt_key)
+        with jwt_key.open('wb') as f:
+            f.write(base64.b64decode(encoded))
     else:
-        log.info("Secondary controller waiting for JWT key from primary...")
-        wait_for_key(jwt_key, timeout=300) 
+        run("dd if=/dev/urandom bs=32 count=1 > " + str(jwt_key), shell=True)
+        util.chown_slurm(jwt_key, mode=0o400)
 
 def _generate_key(p: Path) -> None:
 
@@ -231,14 +226,6 @@ def _generate_key(p: Path) -> None:
     else:
         run(f"dd if=/dev/random of={p} bs=1024 count=1")
 
-def wait_for_key(key_path: Path, timeout: int = 300) -> None:
-    start_time = time.time()
-    while not key_path.exists():
-        if time.time() - start_time > timeout:
-            raise TimeoutError(f"Timeout waiting for key {key_path} from primary controller")
-        log.info(f"Waiting for key {key_path}...")
-        time.sleep(5)
-    log.info(f"Key {key_path} found!")
 
 def setup_key(lkp: util.Lookup) -> None:
     file_name = "munge.key"
@@ -253,17 +240,9 @@ def setup_key(lkp: util.Lookup) -> None:
     if lkp.cfg.controller_state_disk.device_name:
         # Copy key from persistent state disk
         persist = slurmdirs.state / file_name
-        
-        if lkp.is_primary_controller:
-            if not persist.exists():
-                log.info(f"Primary controller generating {file_name}...")
-                _generate_key(persist)
-            else:
-                log.info(f"{file_name} already exists on persistent disk.")
-        else:
-            log.info(f"Secondary controller waiting for {file_name} from primary...")
-            wait_for_key(persist, timeout=300)
-        
+        if not persist.exists():
+            _generate_key(persist)
+
         shutil.copyfile(persist, dst)
         if lkp.cfg.enable_slurm_auth:
             util.chown_slurm(dst, mode=0o400)
@@ -285,18 +264,11 @@ def setup_key(lkp: util.Lookup) -> None:
     if lkp.cfg.enable_slurm_auth:
         # Put key into shared volume for distribution
         distributed = util.slurmdirs.key_distribution / file_name
-        if lkp.is_primary_controller:
-            shutil.copyfile(dst, distributed)
-            util.chown_slurm(distributed, mode=0o400)
-            log.info(f"Key {file_name} distributed to shared volume")
-        else:
-            if not distributed.exists():
-                log.info(f"Waiting for {file_name} in distribution directory...")
-                wait_for_key(distributed, timeout=300)
+        shutil.copyfile(dst, distributed)
+        util.chown_slurm(distributed, mode=0o400)
+        # Munge is distributed from /etc/munge.
     else:
-        if not lkp.is_primary_controller:
-            time.sleep(2)
-        run("systemctl restart munge", timeout=30, shell=True)
+        run("systemctl restart munge", timeout=30)
 
 
 def setup_nss_slurm():

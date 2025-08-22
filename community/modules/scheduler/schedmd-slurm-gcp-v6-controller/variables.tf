@@ -411,24 +411,6 @@ variable "controller_state_disk" {
     size = 50
   }
 
-  validation {
-    condition = (
-      var.nb_controllers <= 1 ||
-      (
-        var.controller_state_disk != null &&
-        (
-          try(var.controller_state_disk.type, "") == "hyperdisk-balanced-high-availability"
-        )
-      )
-    )
-
-    error_message = <<EOF
-Invalid 'controller_state_disk' configuration:
-- When using more than one controller (HA setup), you must define a non-null 'controller_state_disk'.
-- The 'type' field must be set to 'hyperdisk-balanced-high-availability'.
-- Do not set this variable to null in HA mode.
-EOF
-  }
 }
 
 variable "enable_debug_logging" {
