@@ -106,6 +106,21 @@ def is_controller_mount(mount) -> bool:
     mount_addr = util.host_lookup(server_ip)
     return mount_addr == lookup().control_host_addr
 
+def create_symlink(source: Path, target: Path):
+    try:
+        if target.exists() or target.is_symlink():
+            if target.is_symlink():
+                target.unlink()
+            else :
+                shutil.rmtree(target) 
+        target.parent.mkdir(parents=True, exist_ok=True)
+            
+        log.info(f"Creating symlink: {source} -> {target}")
+        os.symlink(source, target)
+    except Exception as e:
+        log.error(f"{str(e)}")
+        raise  
+
 def setup_network_storage():
     """prepare network fs mounts and add them to fstab"""
     log.info("Set up network storage")
@@ -150,6 +165,19 @@ def setup_network_storage():
       slurm_key_mount_handler()
     else:
       munge_mount_handler()
+    
+    if lookup().cfg.network_storage:
+        
+        network_mount_path = Path(lookup().cfg.network_storage[0].local_mount)
+        create_symlink(network_mount_path, Path("/mnt/cluster"))
+
+        if util.lookup().is_controller :
+            spool_slurm = Path(util.slurmdirs.state)
+            util.mkdirp(network_mount_path / "spool")
+            create_symlink(network_mount_path / "spool", spool_slurm )
+            util.chown_slurm(spool_slurm)
+    else:
+        raise ValueError("network_storage configuration is required but not defined")
 
 
 def mount_fstab(mounts: list[NSMount], log):
