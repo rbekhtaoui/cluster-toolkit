@@ -100,7 +100,8 @@ locals {
   x_nodeset         = toset(var.nodeset[*].nodeset_name)
   x_nodeset_dyn     = toset(var.nodeset_dyn[*].nodeset_name)
   x_nodeset_tpu     = toset(var.nodeset_tpu[*].nodeset.nodeset_name)
-  x_nodeset_overlap = setintersection([], local.x_nodeset, local.x_nodeset_dyn, local.x_nodeset_tpu)
+  x_multiregional_nodeset = toset(var.multiregional_nodeset[*].nodeset_name)
+  x_nodeset_overlap = setintersection([], local.x_nodeset, local.x_nodeset_dyn, local.x_nodeset_tpu, local.x_multiregional_nodeset)
 
   etc_dir = abspath("${path.module}/etc")
 
@@ -167,6 +168,15 @@ resource "google_storage_bucket_object" "nodeset_tpu_config" {
   content = yamlencode(each.value)
 }
 
+resource "google_storage_bucket_object" "multiregional_nodeset_config" {
+  for_each = { for ns in var.multiregional_nodeset : ns.nodeset_name => merge(ns, {
+    instance_properties = jsondecode(ns.instance_properties_json)
+  }) }
+
+  bucket  = data.google_storage_bucket.this.name
+  name    = "${local.bucket_dir}/multiregional_nodeset_configs/${each.key}/.yaml"
+  content = yamlencode(each.value)
+}
 #########
 # DEVEL #
 #########

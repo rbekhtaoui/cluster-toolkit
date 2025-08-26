@@ -62,8 +62,8 @@ variable "slurm_cluster_name" {
   description = "The cluster name, used for resource naming and slurm accounting."
 
   validation {
-    condition     = can(regex("^[a-z](?:[a-z0-9]{0,9})$", var.slurm_cluster_name))
-    error_message = "Variable 'slurm_cluster_name' must be a match of regex '^[a-z](?:[a-z0-9]{0,9})$'."
+    condition     = can(regex("^[a-z](?:[-a-z0-9]{0,20})$", var.slurm_cluster_name))
+    error_message = "Variable 'slurm_cluster_name' must be a match of regex '^[a-z](?:[-a-z0-9]{0,20})$'."
   }
 }
 
@@ -336,6 +336,12 @@ variable "nodeset_dyn" {
 
 variable "nodeset_tpu" {
   description = "Cluster nodenets (TPU), as a list."
+  type        = list(any)
+  default     = []
+}
+
+variable "multiregional_nodeset" {
+  description = "Cluster multiregional nodesets, as a list."
   type        = list(any)
   default     = []
 }

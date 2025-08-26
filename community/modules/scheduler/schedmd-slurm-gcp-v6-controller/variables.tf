@@ -37,8 +37,8 @@ variable "slurm_cluster_name" {
   default     = null
 
   validation {
-    condition     = var.slurm_cluster_name == null || can(regex("^[a-z](?:[a-z0-9]{0,9})$", var.slurm_cluster_name))
-    error_message = "Variable 'slurm_cluster_name' must be a match of regex '^[a-z](?:[a-z0-9]{0,9})$'."
+    condition     = var.slurm_cluster_name == null || can(regex("^[a-z](?:[-a-z0-9]{0,20})$", var.slurm_cluster_name))
+    error_message = "Variable 'slurm_cluster_name' must be a match of regex '^[a-z](?:[-a-z0-9]{0,20})$'."
   }
 }
 
@@ -364,6 +364,125 @@ variable "nodeset_dyn" {
   default = []
 }
 
+
+variable "multiregional_nodeset" {
+  description = "Define nodesets, as a list."
+  # TODO: remove optional & defaults from fields, since they SHOULD be properly set by nodeset module and not here.
+  type = list(object({
+    node_count_static      = optional(number, 0)
+    node_count_dynamic_max = optional(number, 1)
+    node_conf              = optional(map(string), {})
+    nodeset_name           = string
+    additional_disks = optional(list(object({
+      disk_name    = optional(string)
+      device_name  = optional(string)
+      disk_size_gb = optional(number)
+      disk_type    = optional(string)
+      disk_labels  = optional(map(string), {})
+      auto_delete  = optional(bool, true)
+      boot         = optional(bool, false)
+    })), [])
+    bandwidth_tier                   = optional(string, "platform_default")
+    can_ip_forward                   = optional(bool, false)
+    advanced_machine_features = object({
+      enable_nested_virtualization = optional(bool)
+      threads_per_core             = optional(number)
+      turbo_mode                   = optional(string)
+      visible_core_count           = optional(number)
+      performance_monitoring_unit  = optional(string)
+      enable_uefi_networking       = optional(bool)
+    })
+    #disable_smt                      = optional(bool, false)
+    disk_auto_delete                 = optional(bool, true)
+    disk_labels                      = optional(map(string), {})
+    disk_size_gb                     = optional(number)
+    disk_type                        = optional(string)
+    enable_confidential_vm           = optional(bool, false)
+    enable_placement                 = optional(bool, false)
+    enable_oslogin                   = optional(bool, true)
+    enable_shielded_vm               = optional(bool, false)
+    enable_maintenance_reservation   = optional(bool, false)
+    enable_opportunistic_maintenance = optional(bool, false)
+    gpu = optional(object({
+      count = number
+      type  = string
+    }))
+    dws_flex = object({
+      enabled          = bool
+      max_run_duration = number
+      use_job_duration = bool
+    })
+    labels                   = optional(map(string), {})
+    machine_type             = optional(string)
+    maintenance_interval     = optional(string)
+    instance_properties_json = string
+    metadata                 = optional(map(string), {})
+    min_cpu_platform         = optional(string)
+    network_tier             = optional(string, "STANDARD")
+    network_storage = optional(list(object({
+      server_ip             = string
+      remote_mount          = string
+      local_mount           = string
+      fs_type               = string
+      mount_options         = string
+      client_install_runner = optional(map(string))
+      mount_runner          = optional(map(string))
+    })), [])
+    on_host_maintenance = optional(string)
+    preemptible         = optional(bool, false)
+    regions              = list(string)
+    service_account = optional(object({
+      email  = optional(string)
+      scopes = optional(list(string), ["https://www.googleapis.com/auth/cloud-platform"])
+    }))
+    shielded_instance_config = optional(object({
+      enable_integrity_monitoring = optional(bool, true)
+      enable_secure_boot          = optional(bool, true)
+      enable_vtpm                 = optional(bool, true)
+    }))
+    source_image_family  = optional(string)
+    source_image_project = optional(string)
+    source_image         = optional(string)
+    subnetworks_self_link = map(string)
+    additional_networks = optional(list(object({
+      network            = string
+      subnetwork         = string
+      subnetwork_project = string
+      network_ip         = string
+      nic_type           = string
+      stack_type         = string
+      queue_count        = number
+      access_config = list(object({
+        nat_ip       = string
+        network_tier = string
+      }))
+      ipv6_access_config = list(object({
+        network_tier = string
+      }))
+      alias_ip_range = list(object({
+        ip_cidr_range         = string
+        subnetwork_range_name = string
+      }))
+    })))
+    access_config = optional(list(object({
+      nat_ip       = string
+      network_tier = string
+    })))
+    spot               = optional(bool, false)
+    tags               = optional(list(string), [])
+    termination_action = optional(string)
+    reservation_name   = optional(string)
+    startup_script = optional(list(object({
+      filename = string
+    content = string })), [])
+
+    zone_target_shape = string
+    zone_policy_allow = map(list(string))
+    zone_policy_deny  = map(list(string))
+  }))
+  default = []
+}
+
 #############
 # PARTITION #
 #############
@@ -377,6 +496,7 @@ EOD
     partition_nodeset     = optional(list(string), [])
     partition_nodeset_dyn = optional(list(string), [])
     partition_nodeset_tpu = optional(list(string), [])
+    partition_multiregional_nodeset = optional(list(string), [])
     enable_job_exclusive  = optional(bool, false)
   }))
 

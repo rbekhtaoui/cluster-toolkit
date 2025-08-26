@@ -200,7 +200,7 @@ module "slurm_files" {
   nodeset_dyn = values(local.nodeset_dyn_map)
   # Use legacy format for now
   nodeset_tpu = values(module.slurm_nodeset_tpu)[*]
-
+  multiregional_nodeset = local.multiregional_nodesets
 
   depends_on = [module.bucket]
 
