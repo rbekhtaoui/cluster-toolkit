@@ -1632,7 +1632,7 @@ class Lookup:
         return instance_metadata("zone")
 
     node_desc_regex = re.compile(
-        r"^(?P<prefix>(?P<cluster>[^\s\-]+)-(?P<nodeset>\S+))-(?P<node>(?P<suffix>\w+)|(?P<range>\[[\d,-]+\]))$"
+    r"^(?P<prefix>(?P<cluster>[\w\-]+)-(?P<nodeset>[\w\-]+))-(?P<node>(?P<suffix>\w+)|(?P<range>\[[\d,-]+\]))$"
     )
 
     @lru_cache(maxsize=None)
@@ -1720,8 +1720,11 @@ class Lookup:
         return self.node_nodeset(node_name).instance_template
 
     def node_template_info(self, node_name=None):
-        return self.template_info(self.node_template(node_name))
-
+        template = self.node_template(node_name)
+        if isinstance(template, dict):
+            template = next(iter(template.values()))
+        return self.template_info(template)
+    
     def node_region(self, node_name=None):
         nodeset = self.node_nodeset(node_name)
         return parse_self_link(nodeset.subnetwork).region

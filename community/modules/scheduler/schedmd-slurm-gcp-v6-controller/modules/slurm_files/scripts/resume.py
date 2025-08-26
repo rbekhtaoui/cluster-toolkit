@@ -181,6 +181,9 @@ def create_instances_request(nodes: List[str], placement_group: Optional[str], e
         instanceProperties = instance_properties(
             nodeset, model, placement_group, labels, excl_job_id
         ),
+        networkInterfaces =  [{
+            'subnetwork':f"projects/{lookup().project}/regions/{region}/subnetworks/{nodeset.subnetwork.get(region, None)}"
+        }],
     )
 
     if placement_group and excl_job_id is not None:
@@ -196,7 +199,7 @@ def create_instances_request(nodes: List[str], placement_group: Optional[str], e
         method_args = {"zone": zone_allow[0]}
     else:
         api_method = lookup().compute.regionInstances().bulkInsert
-        method_args = {"region": lookup().node_region(model) or region}
+        method_args = {"region": region if isinstance(template, dict) else lookup().node_region(model)}
         
         body["locationPolicy"] = dict(
             locations = {
@@ -436,8 +439,6 @@ def resume_nodes(nodes: List[str], resume_data: Optional[ResumeData]):
 
     tpu_chunks, flex_chunks = [], []
     multi_region_groups = {}
-    bi_inserts = {}
-    regions = lkp.multiregional_regions(nodes)
 
     for group, chunk in grouped_nodes.items():
         model = chunk.nodes[0]
@@ -741,7 +742,7 @@ def calculate_hosts_per_topo(accelerator_topology: str, machine_type: NSDict) ->
 def calculate_chunk_size(nodeset: NSDict, lkp: util.Lookup) -> int:
     # Calculates the chunk size based on max distance value received or accelerator topology
     # Assuming nodeset is not tpu
-    machine_type = lkp.template_info(nodeset.instance_template).machine_type
+    machine_type = lkp.template_info(next(iter(nodeset.instance_template.values()))).machine_type
     max_distance = nodeset.placement_max_distance
     accelerator_topology = nodeset.accelerator_topology
 
@@ -764,7 +765,7 @@ def calculate_chunk_size(nodeset: NSDict, lkp: util.Lookup) -> int:
 
 def create_nodeset_placements(nodes: List[str], excl_job_id:Optional[int], lkp: util.Lookup) -> List[PlacementAndNodes]:    
     placements = _allocate_nodes_to_placements(nodes, excl_job_id, lkp)
-    region = lkp.node_region(nodes[0])
+    regions = lkp.multiregional_regions(nodes[0])
     max_distance = lkp.node_nodeset(nodes[0]).get('placement_max_distance')
     accelerator_topology = lkp.nodeset_accelerator_topology(lkp.node_nodeset_name(nodes[0]))
 
@@ -773,16 +774,16 @@ def create_nodeset_placements(nodes: List[str], excl_job_id:Optional[int], lkp: 
         log.debug(
             f"creating {len(placements)} placement groups: \n{yaml.safe_dump(debug_p).rstrip()}"
         )
-
-    requests = {
-        p.placement: create_placement_request(p.placement, region, max_distance, accelerator_topology) for p in placements if p.placement
-    }
-    if not requests:
-        return placements
-    # TODO: aggregate all requests for whole resume and execute them at once (don't limit to nodeset/job)
-    ops = dict(
-        zip(requests.keys(), map_with_futures(ensure_execute, requests.values()))
-    )
+    for region in regions :
+        requests = {
+            p.placement: create_placement_request(p.placement, region, max_distance, accelerator_topology) for p in placements if p.placement
+        }
+        if not requests:
+            return placements
+        # TODO: aggregate all requests for whole resume and execute them at once (don't limit to nodeset/job)
+        ops = dict(
+            zip(requests.keys(), map_with_futures(ensure_execute, requests.values()))
+        )
 
     def classify_result(item):
         op = item[1]
