@@ -303,7 +303,7 @@ resource "random_id" "jwt_key" {
 #############################
 
 resource "google_kms_key_ring" "keyring" {
-  count    = var.with_kms ? 1 : 0
+  count    = var.with_kms && var.kms_key == null ? 1 : 0
   name     = "${local.slurm_cluster_name}-keyring"
   location = var.kms.location != null ? var.kms.location : var.region
 
