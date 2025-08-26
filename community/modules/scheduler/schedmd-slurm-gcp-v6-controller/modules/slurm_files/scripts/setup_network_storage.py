@@ -28,7 +28,7 @@ import shutil
 from pathlib import Path
 from concurrent.futures import as_completed
 from addict import Dict as NSDict # type: ignore
-
+import traceback
 import util
 from util import NSMount, lookup, run, dirs, separate
 from more_executors import Executors, ExceptionRetryPolicy
@@ -106,20 +106,31 @@ def is_controller_mount(mount) -> bool:
     mount_addr = util.host_lookup(server_ip)
     return mount_addr == lookup().control_host_addr
 
-def create_symlink(source: Path, target: Path):
-    try:
-        if target.exists() or target.is_symlink():
-            if target.is_symlink():
-                target.unlink()
-            else :
-                shutil.rmtree(target) 
-        target.parent.mkdir(parents=True, exist_ok=True)
-            
-        log.info(f"Creating symlink: {source} -> {target}")
-        os.symlink(source, target)
-    except Exception as e:
-        log.error(f"{str(e)}")
-        raise  
+def create_symlink(source: Path, target: Path,retries: int = 5, delay: int = 2):
+    
+    for attempt in range(1, retries + 1):
+            try:
+                if os.path.ismount(target):
+                    raise RuntimeError(f"Target {target} is a mount point. Cannot replace it with a symlink.")
+                if target.exists() or target.is_symlink():
+                    if target.is_symlink():
+                        target.unlink()
+                    else:
+                        shutil.rmtree(target)
+                
+                target.parent.mkdir(parents=True, exist_ok=True)
+
+                log.info(f"[Attempt {attempt}] Creating symlink: {source} -> {target}")
+                os.symlink(source, target)
+                log.info("Symlink created successfully.")
+                return
+            except Exception as e:
+                log.error(f"[Attempt {attempt}] Failed to create symlink: {e}")
+                log.info("Full stack trace:\n" + "".join(traceback.format_exc()))
+                if attempt < retries:
+                    time.sleep(delay)
+                else:
+                    raise
 
 def setup_network_storage():
     """prepare network fs mounts and add them to fstab"""
@@ -174,7 +185,7 @@ def setup_network_storage():
         if util.lookup().is_controller :
             spool_slurm = Path(util.slurmdirs.state)
             util.mkdirp(network_mount_path / "spool")
-            create_symlink(network_mount_path / "spool", spool_slurm )
+            create_symlink(network_mount_path / "spool", spool_slurm )   
             util.chown_slurm(spool_slurm)
     else:
         raise ValueError("network_storage configuration is required but not defined")
