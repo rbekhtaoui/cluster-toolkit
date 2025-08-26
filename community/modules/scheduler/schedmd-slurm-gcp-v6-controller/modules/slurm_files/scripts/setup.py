@@ -489,7 +489,7 @@ def setup_controller():
         result.check_returncode()  # will raise error
     
     qos_list = lookup().cfg.get('slurm_qos_list', {})
-    if lkp.cfg.get(qos_list) :
+    if qos_list :
         configure_slurm_qos(qos_list)
 
     run("systemctl enable slurmctld", timeout=30)
