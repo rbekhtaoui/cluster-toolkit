@@ -396,6 +396,19 @@ variable "with_kms" {
   default     = true
 }
 
+variable "slurm_qos_list" {
+  description = "List of Slurm QOS available at the cluster start-up"
+  type = map(object({
+    specs = map(string)
+    targets = list(object({
+      type    = string
+      names   = list(string)
+      default = bool
+    }))
+  }))
+  default  = null
+}
+
 variable "kms" {
   description = "KMS configuration. If location is not specified, var.region will be used."
   type = object({

@@ -53,6 +53,7 @@ locals {
     extra_logging_flags   = var.extra_logging_flags
     controller_state_disk = var.controller_state_disk
     slurm_control_hosts   = var.slurm_control_hosts
+    slurm_qos_list        = var.slurm_qos_list
 
     # storage
     disable_default_mounts = var.disable_default_mounts

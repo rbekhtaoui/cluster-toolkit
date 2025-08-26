@@ -154,6 +154,7 @@ module "slurm_files" {
   slurmdbd_conf_tpl   = var.slurmdbd_conf_tpl
   slurm_conf_tpl      = var.slurm_conf_tpl
   slurm_conf_template = var.slurm_conf_template
+  slurm_qos_list      = var.slurm_qos_list
   cgroup_conf_tpl     = var.cgroup_conf_tpl
   cloud_parameters    = var.cloud_parameters
   cloudsql_secret = try(

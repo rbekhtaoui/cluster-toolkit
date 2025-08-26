@@ -408,6 +408,37 @@ def configure_dirs():
         shutil.copyfile(util.scripts_dir / src_file, dst)
         os.chmod(dst, 0o755)
 
+def configure_slurm_qos(qos_list):
+    """
+    Configure Slurm QoS based on the provided qos_list dictionary.
+    """
+    sacctmgr = f"{slurmdirs.prefix}/bin/sacctmgr -i"
+    run(f"{sacctmgr} create account name=slurm-default MaxSubmitJobs=0 defaultqos=normal", check=False)
+    for qos_name, qos in qos_list.items():
+        # Create QoS
+        specs_cmd = " ".join(f"{k}={v}" for k, v in qos.get('specs', {}).items())
+        run(f"{sacctmgr} create qos {qos_name} {specs_cmd}", check=False)
+        
+        # Configure QoS targets
+        for target in qos.get('targets', []):
+            if not target:
+                continue
+            
+            if target.get('type') == 'partition':
+                for name in target.get('names', []):
+                    run(f"scontrol update PartitionName={name} QOS={qos_name}", check=False)
+            
+            elif target.get('type') == 'account':
+                names = ",".join(target.get('names', []))
+                default_qos = f"defaultqos={qos_name}" if target.get('default') else ""
+                run(f"{sacctmgr} modify account where name={names} set qos+={qos_name} {default_qos}", check=False)
+            
+            elif target.get('type') == 'user':
+                names = ",".join(target.get('names', []))
+                default_qos = f"defaultqos={qos_name}" if target.get('default') else ""
+                run(f"{sacctmgr} modify user where name={names} set qos+={qos_name} {default_qos}", check=False)
+    
+    log.info("Slurm QoS configuration complete")
 
 def self_report_controller_address(lkp: util.Lookup) -> None:
     if not lkp.cfg.controller_network_attachment:
@@ -456,6 +487,10 @@ def setup_controller():
         log.info(result.stdout)
     elif result.returncode > 1:
         result.check_returncode()  # will raise error
+    
+    qos_list = lookup().cfg.get('slurm_qos_list', {})
+    if lkp.cfg.get(qos_list) :
+        configure_slurm_qos(qos_list)
 
     run("systemctl enable slurmctld", timeout=30)
     run("systemctl restart slurmctld", timeout=30)

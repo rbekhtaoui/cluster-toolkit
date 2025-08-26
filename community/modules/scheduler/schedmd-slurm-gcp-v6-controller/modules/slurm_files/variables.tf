@@ -511,6 +511,19 @@ variable "controller_network_attachment" {
   default     = null
 }
 
+variable "slurm_qos_list" {
+  description = "List of Slurm QOS available at the cluster start-up"
+  type = map(object({
+    specs = map(string)
+    targets = list(object({
+      type    = string
+      names   = list(string)
+      default = bool
+    }))
+  }))
+  default  = null
+}
+
 variable "kms_key" {
   description = "Key to use to encrypt/decrypt secrets"
   type        = string
