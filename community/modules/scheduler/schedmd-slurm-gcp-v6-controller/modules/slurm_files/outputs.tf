@@ -43,3 +43,8 @@ output "config" {
     error_message = "All nodeset names must be unique among all nodeset types."
   }
 }
+
+output "controllers_names" {
+  value = var.slurm_control_hosts
+}
+

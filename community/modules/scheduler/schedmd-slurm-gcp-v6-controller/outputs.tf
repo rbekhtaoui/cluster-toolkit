@@ -22,6 +22,10 @@ output "slurm_controller_instance" {
   value       = module.slurm_controller_template[0].self_link
 }
 
+output "controllers_names" {
+  value = module.slurm_files.controllers_names
+}
+
 output "slurm_login_instances" {
   description = "Compute instances of login nodes"
   value       = flatten([for k, v in module.login : v.instances])
