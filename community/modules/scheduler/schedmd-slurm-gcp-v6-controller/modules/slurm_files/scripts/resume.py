@@ -27,6 +27,8 @@ import collections
 from pathlib import Path
 from dataclasses import dataclass
 from addict import Dict as NSDict # type: ignore
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import time
 
 import util
 from util import (
@@ -55,7 +57,7 @@ BULK_INSERT_LIMIT = 5000
 
 # https://cloud.google.com/compute/docs/instance-groups#types_of_managed_instance_groups
 ZONAL_MIG_SIZE_LIMIT = 1000
-
+MAX_FAILOVER_TIMEOUT = 300
 
 @dataclass(frozen=True)
 class ResumeJobData:
@@ -322,6 +324,7 @@ def resume_nodes(nodes: List[str], resume_data: Optional[ResumeData]):
         )
 
     tpu_chunks, flex_chunks = [], []
+    multi_region_groups = {}
     bi_inserts = {}
 
     for group, chunk in grouped_nodes.items():
@@ -332,40 +335,39 @@ def resume_nodes(nodes: List[str], resume_data: Optional[ResumeData]):
         elif lkp.is_flex_node(model):
             flex_chunks.append(chunk)
         else:
-            bi_inserts[group] = create_instances_request(
-                chunk.nodes, chunk.placement_group, chunk.excl_job_id
-            )
+            multi_region_groups[group] = chunk
 
     for chunk in flex_chunks:
         mig_flex.resume_flex_chunk(chunk.nodes, chunk.excl_job_id, lkp)
 
-    # execute all bulkInsert requests  with batch
-    bulk_ops = dict(
-        zip(bi_inserts.keys(), map_with_futures(ensure_execute, bi_inserts.values()))
-    )
-    log.debug(f"bulk_ops={yaml.safe_dump(bulk_ops)}")
-    started = {
-        group: op for group, op in bulk_ops.items() if not isinstance(op, Exception)
-    }
-    failed = {
-        group: err for group, err in bulk_ops.items() if isinstance(err, Exception)
-    }
-    if failed:
-        failed_reqs = [str(e) for e in failed.items()]
-        log.error("bulkInsert API failures: {}".format("; ".join(failed_reqs)))
-        for ident, exc in failed.items():
-            down_nodes_notify_jobs(grouped_nodes[ident].nodes, f"GCP Error: {exc._get_reason()}", resume_data) # type: ignore
+    bulk_ops = {}
 
+    for group, chunk in multi_region_groups.items():
+        try:
+            log.info(f"Attempting multi-region resume for group={group} regions={chunk.regions}")
+            success, op = attempt_create_with_failover_parallel(group, chunk, chunk.regions, resume_data)
+            if success:
+                bulk_ops[group] = op
+            else:
+                log.error(f"Failed to resume nodes for group={group} in all regions")
+                down_nodes_notify_jobs(chunk.nodes, "Failed to create nodes in all regions", resume_data)
+
+        except Exception as e:
+            log.error(f"Error resuming nodes for group={group}: {e}")
+            down_nodes_notify_jobs(chunk.nodes, f"GCP Error: {str(e)}", resume_data)
+    
     if log.isEnabledFor(logging.DEBUG):
-        for group, op in started.items():
-            group_nodes = grouped_nodelists[group]
-            name = op["name"]
-            gid = op["operationGroupId"]
-            log.debug(
-                f"new bulkInsert operation started: group={group} nodes={group_nodes} name={name} operationGroupId={gid}"
-            )
+        for group, op in bulk_ops.items():
+            if isinstance(op, dict):
+                name = op.get("name")
+                gid = op.get("operationGroupId")
+                log.debug(f"new bulkInsert operation started: group={group} nodes={grouped_nodelists[group]} name={name} operationGroupId={gid}")
+
     # wait for all bulkInserts to complete and log any errors
-    bulk_operations = {group: wait_for_operation(op) for group, op in started.items()}
+    bulk_operations = {}
+    for group, op in bulk_ops.items():
+        if isinstance(op, dict): 
+            bulk_operations[group] = wait_for_operation(op)
 
     # Start TPU after regular nodes so that regular nodes are not affected by the slower TPU nodes
     execute_with_futures(tpu.start_tpu, tpu_chunks)
@@ -455,6 +457,47 @@ def _handle_bulk_insert_op(op: Dict, nodes: List[str], resume_data: Optional[Res
             f"errors from insert for node '{failed_nodes[0]}' ({failed_ops[0]['name']}): {msg}"
         )
 
+def attempt_create_with_failover_parallel(group, chunk, regions, resume_data):
+    """
+    Attempt to create instances in parallel across multiple regions.
+    Returns (success: bool, bulk_operations: dict)
+    """
+    log.info(f"Starting multi-region parallel failover for group {group} across regions: {regions}")
+    
+    start_time = time.time()
+
+    def create_in_region(region):
+        try:
+            log.info(f"[{region}] Preparing bulkInsert for group {group}")
+            bi_req = create_instances_request(chunk.nodes, chunk.partition, chunk.placement_group, chunk.job_id, region)
+            op = ensure_execute(bi_req)
+            log.debug(f"[{region}] bulkInsert started for group {group}")
+            completed = wait_for_operation(op)
+            return region, completed
+        except Exception as e:
+            return region, e
+
+    with ThreadPoolExecutor(max_workers=len(regions)) as executor:
+        futures = {executor.submit(create_in_region, r): r for r in regions}
+
+        for future in as_completed(futures, timeout=MAX_FAILOVER_TIMEOUT):
+            region = futures[future]
+            try:
+                result = future.result()
+                if not isinstance(result[1], Exception):
+                    # Success -> cancel other futures
+                    log.info(f"Success in region {region} for group {group}")
+                    for f in futures:
+                        f.cancel()
+                    return True, {group: result[1]}
+                else:
+                    log.warning(f"[{region}] Failed to create instances: {result[1]}")
+            except Exception as e:
+                log.error(f"[{region}] Exception during failover: {e}")
+
+    elapsed = time.time() - start_time
+    log.error(f"All regions failed for group {group} after {elapsed:.2f}s")
+    return False, {}
 
 def down_nodes_notify_jobs(nodes: List[str], reason: str, resume_data: Optional[ResumeData]) -> None:
     """set nodes down with reason"""

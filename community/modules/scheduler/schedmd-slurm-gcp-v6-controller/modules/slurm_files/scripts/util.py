@@ -1716,7 +1716,14 @@ class Lookup:
     def node_region(self, node_name=None):
         nodeset = self.node_nodeset(node_name)
         return parse_self_link(nodeset.subnetwork).region
-
+    
+    def multiregional_regions(self, node_names: List[str]) -> List[str]:
+        nodesets = {self.node_nodeset_name(n) for n in node_names}
+        regions = set()
+        for ns in nodesets:
+            regions.update(self._cfg.multiregional_nodeset[ns].regions)
+        return list(regions)
+    
     def nodeset_accelerator_topology(self, nodeset_name: str) -> Optional[str]:
         if not self.nodeset_is_tpu(nodeset_name):
             return getattr(self.cfg.nodeset[nodeset_name], 'accelerator_topology', None)
