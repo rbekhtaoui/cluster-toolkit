@@ -422,12 +422,10 @@ def gen_cloud_gres_conf(lkp: util.Lookup) -> None:
             gpu_nodes[gpu_count].append(lkp.nodelist(nodeset))
 
     for nodeset in lkp.cfg.multiregional_nodeset.values():
-        template_info = lkp.template_info(next(iter(nodeset.instance_template.values())))
-        gpu_count = template_info.gpu_count
-        if gpu_count == 0:
-            continue
-        nodelist = lkp.nodelist(nodeset) 
-        gpu_nodes[gpu_count].append(nodelist)
+        ti = lkp.template_info(next(iter(nodeset.instance_template.values())))
+        gpu_count = ti.gpu.count if ti.gpu  else 0
+        if gpu_count:
+            gpu_nodes[gpu_count].append(lkp.nodelist(nodeset))
 
     lines = [
         dict_to_conf(
