@@ -27,8 +27,6 @@ import collections
 from pathlib import Path
 from dataclasses import dataclass
 from addict import Dict as NSDict # type: ignore
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import time
 
 import util
 from util import (
@@ -57,7 +55,7 @@ BULK_INSERT_LIMIT = 5000
 
 # https://cloud.google.com/compute/docs/instance-groups#types_of_managed_instance_groups
 ZONAL_MIG_SIZE_LIMIT = 1000
-MAX_FAILOVER_TIMEOUT = 300
+
 
 @dataclass(frozen=True)
 class ResumeJobData:
@@ -88,12 +86,15 @@ def get_resume_file_data() -> Optional[ResumeData]:
         jobs.append(job)
     return ResumeData(jobs=jobs)
 
-def instance_properties(nodeset: NSDict, model:str, placement_group:Optional[str], labels:Optional[dict], job_id:Optional[int]):
+def instance_properties(nodeset: NSDict, model:str, placement_group:Optional[str], labels:Optional[dict], job_id:Optional[int], region: Optional[str]= None):
     props = NSDict()
 
     if labels: # merge in extra labels on instance and disks
         template_link = lookup().node_template(model)
-        template_info = lookup().template_info(template_link)
+        template_info = (
+            lookup().template_info(template_link.get(region)) 
+            if isinstance(template_link, dict) else lookup().template_info(template_link)
+        )
 
         props.labels = {**template_info.labels, **labels}
         
@@ -175,31 +176,49 @@ def create_instances_request(nodes: List[str], placement_group: Optional[str], e
 
     body = dict(
         count = len(nodes),
-        sourceInstanceTemplate = template.get(region) if isinstance(template, dict) else template,
+        sourceInstanceTemplate = template.get(region) if region else template,
         # key is instance name, value overwrites properties (no overwrites)
         perInstanceProperties = {k: {} for k in nodes},
         instanceProperties = instance_properties(
-            nodeset, model, placement_group, labels, excl_job_id
+            nodeset, model, placement_group, labels, excl_job_id, region
         ),
-        networkInterfaces =  [{
-            'subnetwork':f"projects/{lookup().project}/regions/{region}/subnetworks/{nodeset.subnetwork.get(region, None)}"
-        }],
     )
+
+    if region:
+        body["networkInterfaces"] = [
+            {
+                "subnetwork": f"projects/{lookup().project}/regions/{region}/subnetworks/{nodeset.subnetwork.get(region)}"
+            }
+        ]
 
     if placement_group and excl_job_id is not None:
         pass # do not set minCount to force "all or nothing" behavior
     else:
         body["minCount"] = 1
 
-    zone_allow = (nodeset.zone_policy_allow.get(region) if isinstance(nodeset.zone_policy_allow, dict) else nodeset.zone_policy_allow) or []
-    zone_deny = (nodeset.zone_policy_deny.get(region) if isinstance(nodeset.zone_policy_deny, dict) else nodeset.zone_policy_deny) or []
 
-    if len(zone_allow) == 1 : # if only one zone is used, use zonal BulkInsert API, as less prone to errors
+    zone_allow = (
+        nodeset.zone_policy_allow.get(region, [])
+        if isinstance(nodeset.zone_policy_allow, dict)
+        else nodeset.zone_policy_allow
+        if isinstance(nodeset.zone_policy_allow, list)
+        else []
+    )
+
+    zone_deny = (
+        nodeset.zone_policy_deny.get(region, [])
+        if isinstance(nodeset.zone_policy_deny, dict)
+        else nodeset.zone_policy_deny
+        if isinstance(nodeset.zone_policy_deny, list)
+        else []
+    )
+
+    if len(zone_allow) == 1: # if only one zone is used, use zonal BulkInsert API, as less prone to errors
         api_method = lookup().compute.instances().bulkInsert
         method_args = {"zone": zone_allow[0]}
     else:
         api_method = lookup().compute.regionInstances().bulkInsert
-        method_args = {"region": region if isinstance(template, dict) else lookup().node_region(model)}
+        method_args = {"region": region or lookup().node_region(model)}
         
         body["locationPolicy"] = dict(
             locations = {
@@ -215,117 +234,6 @@ def create_instances_request(nodes: List[str], placement_group: Optional[str], e
     log.debug(f"new request: endpoint={req.methodId} nodes={to_hostlist(nodes)}")
     log_api_request(req)
     return req
-
-def attempt_create_instances_in_region(group, chunk, region):
-    """
-    Prepare bulkInsert request for a specific region
-    """
-    try:
-        bi_inserts = {}
-        log.info(f"Attempting to create instances for group {group} in region {region}")
-
-        bi_inserts[group] = create_instances_request(
-            chunk.nodes, chunk.partition, chunk.placement_group, chunk.job_id, region
-        )
-        return bi_inserts
-    except Exception as e:
-        log.error(f"Error preparing bulk insert for group {group} in region {region}: {e}")
-        raise
-
-def attempt_create_with_failover(group, chunk, regions, resume_data):
-    """
-    Attempt to create instances with automatic failover across all regions
-    Returns (success: bool, bulk_operations: dict)
-    """
-    log.info(f"Starting multi-region failover for group {group} across regions: {regions}")
-    
-    for region_index, region in enumerate(regions):
-        try:
-            log.info(f"Attempting to create instances for group {group} in region {region} (attempt {region_index + 1}/{len(regions)})")
-            bi_inserts = {}
-            
-            bi_inserts_result = attempt_create_instances_in_region(group, chunk, region)
-    
-            try:
-                bulk_ops = dict(
-                    zip(bi_inserts.keys(), map_with_futures(ensure_execute, bi_inserts.values()))
-                )
-            except Exception as e:
-                log.warning(f"Exception executing bulkInsert for group {group} in region {region}: {e}")
-                continue
-            
-            started = {
-                grp: op for grp, op in bulk_ops.items() if not isinstance(op, Exception)
-            }
-            failed = {
-                grp: err for grp, err in bulk_ops.items() if isinstance(err, Exception)
-            }
-            
-            if failed:
-                failed_reqs = [f"{grp}: {str(err)}" for grp, err in failed.items()]
-                log.warning(f"bulkInsert API failures in region {region}: {'; '.join(failed_reqs)}")
-                
-                if region_index == len(regions) - 1:
-                    log.error(f"Last region {region} also failed for group {group}")
-                    return False, {}
-                else:
-                    log.info(f"Trying next region for group {group}")
-                    continue
-            
-            if started:
-                log.info(f"bulkInsert successful for group {group} in region {region}")
-                if log.isEnabledFor(logging.DEBUG):
-                    for grp, op in started.items():
-                        group_nodes = to_hostlist_fast(chunk.nodes)
-                        name = op["name"]
-                        gid = op["operationGroupId"]
-                        log.debug(
-                            f"new bulkInsert operation started: group={grp} nodes={group_nodes} name={name} operationGroupId={gid} region={region}"
-                        )
-                
-                try:
-                    bulk_operations = {grp: wait_for_operation(op) for grp, op in started.items()}
-                    
-                    successful_operations = {}
-                    operation_errors = {}
-                    
-                    for grp, bulk_op in bulk_operations.items():
-                        if "error" in bulk_op:
-                            operation_errors[grp] = bulk_op["error"]
-                        else:
-                            successful_operations[grp] = bulk_op
-                    
-                    if operation_errors and not successful_operations:
-                        log.warning(f"All bulkInsert operations failed in region {region}: {operation_errors}")
-                        if region_index == len(regions) - 1:
-                            log.error(f"Last region {region} operations failed for group {group}")
-                            return False, {}
-                        else:
-                            continue
-                    
-                    log.info(f"bulkInsert operations completed for group {group} in region {region}")
-                    return True, bulk_operations
-                    
-                except Exception as e:
-                    log.warning(f"Exception waiting for operations in region {region}: {e}")
-                    if region_index == len(regions) - 1:
-                        return False, {}
-                    else:
-                        continue
-            else:
-                log.warning(f"No operations started for group {group} in region {region}")
-                continue
-                
-        except Exception as e:
-            log.warning(f"Unexpected exception for group {group} in region {region}: {e}")
-            if region_index == len(regions) - 1:
-                log.error(f"All regions exhausted for group {group}, last error: {e}")
-                return False, {}
-            else:
-                continue
-    
-    log.error(f"All regions failed for group {group}")
-    return False, {}
 
 @dataclass()
 class PlacementAndNodes:
@@ -437,8 +345,8 @@ def resume_nodes(nodes: List[str], resume_data: Optional[ResumeData]):
             "node bulk groups: \n{}".format(yaml.safe_dump(grouped_nodelists).rstrip())
         )
 
-    tpu_chunks, flex_chunks = [], []
-    multi_region_groups = {}
+    tpu_chunks, flex_chunks, multi_region_chunks = [], [], []
+    bi_inserts = {}
 
     for group, chunk in grouped_nodes.items():
         model = chunk.nodes[0]
@@ -447,40 +355,65 @@ def resume_nodes(nodes: List[str], resume_data: Optional[ResumeData]):
             tpu_chunks.append(chunk.nodes)
         elif lkp.is_flex_node(model):
             flex_chunks.append(chunk)
+        elif lkp.node_is_multiregional(model):
+            multi_region_chunks.append(chunk)
         else:
-            multi_region_groups[group] = chunk
+            bi_inserts[group] = create_instances_request(
+                chunk.nodes, chunk.placement_group, chunk.excl_job_id
+            )
 
     for chunk in flex_chunks:
         mig_flex.resume_flex_chunk(chunk.nodes, chunk.excl_job_id, lkp)
 
-    bulk_ops = {}
+    for chunk in multi_region_chunks:
+        nodes = chunk.nodes
+        regions = lkp.multiregional_regions(nodes)
+        import random; random.shuffle(regions)
 
-    for group, chunk in multi_region_groups.items():
-        try:
-            log.info(f"Attempting multi-region resume for group={group} regions={chunk.regions}")
-            success, op = attempt_create_with_failover_parallel(group, chunk, chunk.regions, resume_data)
-            if success:
-                bulk_ops[group] = op
-            else:
-                log.error(f"Failed to resume nodes for group={group} in all regions")
-                down_nodes_notify_jobs(chunk.nodes, "Failed to create nodes in all regions", resume_data)
+        success = False
+        for region in regions:
+            log.info(f"Trying multiregion bulkInsert for nodes={nodes} in region={region}")
+            try:
+                req = create_instances_request(nodes, chunk.placement_group, chunk.excl_job_id, region=region)
+                op = ensure_execute(req)
+                op_done = wait_for_operation(op)
+                _handle_bulk_insert_op(op_done, nodes, resume_data)
+                success = True
+                break
+            except Exception as e:
+                log.warning(f"Failed in region {region} for nodes {nodes}: {e}")
 
-        except Exception as e:
-            log.error(f"Error resuming nodes for group={group}: {e}")
-            down_nodes_notify_jobs(chunk.nodes, f"GCP Error: {str(e)}", resume_data)
-    
+        if not success:
+            log.error(f"All regions failed for nodes {nodes}")
+            down_nodes_notify_jobs(nodes, "Failed to create nodes in all regions", resume_data)
+
+    # execute all bulkInsert requests  with batch
+    bulk_ops = dict(
+        zip(bi_inserts.keys(), map_with_futures(ensure_execute, bi_inserts.values()))
+    )
+    log.debug(f"bulk_ops={yaml.safe_dump(bulk_ops)}")
+    started = {
+        group: op for group, op in bulk_ops.items() if not isinstance(op, Exception)
+    }
+    failed = {
+        group: err for group, err in bulk_ops.items() if isinstance(err, Exception)
+    }
+    if failed:
+        failed_reqs = [str(e) for e in failed.items()]
+        log.error("bulkInsert API failures: {}".format("; ".join(failed_reqs)))
+        for ident, exc in failed.items():
+            down_nodes_notify_jobs(grouped_nodes[ident].nodes, f"GCP Error: {exc._get_reason()}", resume_data) # type: ignore
+
     if log.isEnabledFor(logging.DEBUG):
-        for group, op in bulk_ops.items():
-            if isinstance(op, dict):
-                name = op.get("name")
-                gid = op.get("operationGroupId")
-                log.debug(f"new bulkInsert operation started: group={group} nodes={grouped_nodelists[group]} name={name} operationGroupId={gid}")
-
+        for group, op in started.items():
+            group_nodes = grouped_nodelists[group]
+            name = op["name"]
+            gid = op["operationGroupId"]
+            log.debug(
+                f"new bulkInsert operation started: group={group} nodes={group_nodes} name={name} operationGroupId={gid}"
+            )
     # wait for all bulkInserts to complete and log any errors
-    bulk_operations = {}
-    for group, op in bulk_ops.items():
-        if isinstance(op, dict): 
-            bulk_operations[group] = wait_for_operation(op)
+    bulk_operations = {group: wait_for_operation(op) for group, op in started.items()}
 
     # Start TPU after regular nodes so that regular nodes are not affected by the slower TPU nodes
     execute_with_futures(tpu.start_tpu, tpu_chunks)
@@ -570,47 +503,6 @@ def _handle_bulk_insert_op(op: Dict, nodes: List[str], resume_data: Optional[Res
             f"errors from insert for node '{failed_nodes[0]}' ({failed_ops[0]['name']}): {msg}"
         )
 
-def attempt_create_with_failover_parallel(group, chunk, regions, resume_data):
-    """
-    Attempt to create instances in parallel across multiple regions.
-    Returns (success: bool, bulk_operations: dict)
-    """
-    log.info(f"Starting multi-region parallel failover for group {group} across regions: {regions}")
-    
-    start_time = time.time()
-
-    def create_in_region(region):
-        try:
-            log.info(f"[{region}] Preparing bulkInsert for group {group}")
-            bi_req = create_instances_request(chunk.nodes, chunk.partition, chunk.placement_group, chunk.job_id, region)
-            op = ensure_execute(bi_req)
-            log.debug(f"[{region}] bulkInsert started for group {group}")
-            completed = wait_for_operation(op)
-            return region, completed
-        except Exception as e:
-            return region, e
-
-    with ThreadPoolExecutor(max_workers=len(regions)) as executor:
-        futures = {executor.submit(create_in_region, r): r for r in regions}
-
-        for future in as_completed(futures, timeout=MAX_FAILOVER_TIMEOUT):
-            region = futures[future]
-            try:
-                result = future.result()
-                if not isinstance(result[1], Exception):
-                    # Success -> cancel other futures
-                    log.info(f"Success in region {region} for group {group}")
-                    for f in futures:
-                        f.cancel()
-                    return True, {group: result[1]}
-                else:
-                    log.warning(f"[{region}] Failed to create instances: {result[1]}")
-            except Exception as e:
-                log.error(f"[{region}] Exception during failover: {e}")
-
-    elapsed = time.time() - start_time
-    log.error(f"All regions failed for group {group} after {elapsed:.2f}s")
-    return False, {}
 
 def down_nodes_notify_jobs(nodes: List[str], reason: str, resume_data: Optional[ResumeData]) -> None:
     """set nodes down with reason"""
@@ -742,7 +634,11 @@ def calculate_hosts_per_topo(accelerator_topology: str, machine_type: NSDict) ->
 def calculate_chunk_size(nodeset: NSDict, lkp: util.Lookup) -> int:
     # Calculates the chunk size based on max distance value received or accelerator topology
     # Assuming nodeset is not tpu
-    machine_type = lkp.template_info(next(iter(nodeset.instance_template.values()))).machine_type
+    machine_type = (
+    lkp.template_info(next(iter(nodeset.instance_template.values()))).machine_type
+    if isinstance(nodeset.instance_template, dict)
+    else lkp.template_info(nodeset.instance_template).machine_type
+    )
     max_distance = nodeset.placement_max_distance
     accelerator_topology = nodeset.accelerator_topology
 
@@ -765,7 +661,7 @@ def calculate_chunk_size(nodeset: NSDict, lkp: util.Lookup) -> int:
 
 def create_nodeset_placements(nodes: List[str], excl_job_id:Optional[int], lkp: util.Lookup) -> List[PlacementAndNodes]:    
     placements = _allocate_nodes_to_placements(nodes, excl_job_id, lkp)
-    regions = lkp.multiregional_regions(nodes[0])
+    regions = lkp.multiregional_regions(nodes) if lkp.node_is_multiregional(nodes[0]) else [lkp.node_region(nodes[0])]
     max_distance = lkp.node_nodeset(nodes[0]).get('placement_max_distance')
     accelerator_topology = lkp.nodeset_accelerator_topology(lkp.node_nodeset_name(nodes[0]))
 

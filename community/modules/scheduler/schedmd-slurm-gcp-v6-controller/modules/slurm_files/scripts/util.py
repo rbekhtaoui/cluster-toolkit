@@ -1680,6 +1680,9 @@ class Lookup:
         nodeset_name = self.node_nodeset_name(node_name)
         return self.cfg.nodeset_tpu.get(nodeset_name) is not None
 
+    def nodeset_is_tpu(self, nodeset_name=None) -> bool:
+        return self.cfg.nodeset_tpu.get(nodeset_name) is not None
+    
     def node_is_multiregional(self, node_name=None) -> bool:
         nodeset_name = self.node_nodeset_name(node_name)
         return self.cfg.multiregional_nodeset.get(nodeset_name) is not None
