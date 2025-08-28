@@ -113,7 +113,7 @@ locals {
     device_name : try(google_compute_region_disk.disk[0].name, null)
   }
 
-  nodeset_startup_scripts = { for k, v in local.nodeset_map : k => concat(local.common_scripts, v.startup_script) }
+  nodeset_startup_scripts = { for k, v in local.multiregional_nodeset_map : k => concat(local.common_scripts, v.startup_script) }
 }
 
 # KMS CRYPTED KEYS
