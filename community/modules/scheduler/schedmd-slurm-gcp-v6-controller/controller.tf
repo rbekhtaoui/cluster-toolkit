@@ -220,7 +220,7 @@ resource "google_compute_region_instance_group_manager" "controller_mig" {
   wait_for_instances = false
   auto_healing_policies {
     health_check      = google_compute_health_check.controller.id
-    initial_delay_sec = 300
+    initial_delay_sec = 900
   }
 
   update_policy {
