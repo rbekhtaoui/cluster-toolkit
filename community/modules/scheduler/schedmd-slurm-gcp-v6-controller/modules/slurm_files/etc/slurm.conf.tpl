@@ -29,6 +29,8 @@ DebugFlags=Power
 #
 # TIMERS
 MessageTimeout=60
+BatchStartTimeout=30
+PrologEpilogTimeout=600
 
 ################################################################################
 #              vvvvv  WARNING: DO NOT MODIFY SECTION BELOW  vvvvv              #
@@ -66,3 +68,6 @@ include cloud.conf
 ################################################################################
 #              ^^^^^  WARNING: DO NOT MODIFY SECTION ABOVE  ^^^^^              #
 ################################################################################
+
+PrologFlags=Alloc
+
