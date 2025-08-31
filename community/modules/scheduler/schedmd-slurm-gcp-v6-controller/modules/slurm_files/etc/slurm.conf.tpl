@@ -69,5 +69,3 @@ include cloud.conf
 #              ^^^^^  WARNING: DO NOT MODIFY SECTION ABOVE  ^^^^^              #
 ################################################################################
 
-PrologFlags=Alloc
-
