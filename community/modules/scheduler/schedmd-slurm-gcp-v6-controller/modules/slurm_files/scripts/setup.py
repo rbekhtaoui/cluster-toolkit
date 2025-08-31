@@ -215,7 +215,8 @@ def setup_jwt_key(lkp: util.Lookup):
             f.write(base64.b64decode(encoded))
     else:
         run("dd if=/dev/urandom bs=32 count=1 > " + str(jwt_key), shell=True)
-        util.chown_slurm(jwt_key, mode=0o400)
+    
+    util.chown_slurm(jwt_key, mode=0o400)
 
 def _generate_key(p: Path) -> None:
 
@@ -461,11 +462,12 @@ def setup_controller():
     if lkp.cfg.controller_state_disk.device_name != None:
         mount_save_state_disk()
 
-    setup_jwt_key(lkp)
+    
     setup_key(lkp)
 
     setup_sudoers()
     setup_network_storage()
+    setup_jwt_key(lkp)
 
     run_custom_scripts()
 
