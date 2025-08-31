@@ -125,7 +125,7 @@ def conflines(lkp: util.Lookup) -> str:
         "ResumeProgram": f"{scripts_dir}/resume_wrapper.sh",
         "ResumeFailProgram": f"{scripts_dir}/suspend_wrapper.sh",
         "ResumeRate": get("resume_rate", 0),
-        "ResumeTimeout": get("resume_timeout", 300),
+        "ResumeTimeout": get("resume_timeout", 600),
         "SuspendProgram": f"{scripts_dir}/suspend_wrapper.sh",
         "SuspendRate": get("suspend_rate", 0),
         "SuspendTimeout": get("suspend_timeout", 300),
